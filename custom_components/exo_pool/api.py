@@ -993,7 +993,7 @@ def _schedule_credential_refresh(hass: HomeAssistant, entry: ConfigEntry) -> Non
         try:
             await asyncio.sleep(delay)
         except asyncio.CancelledError:
-            return
+            raise
         _LOGGER.info("Refreshing AWS credentials for MQTT")
         session = aiohttp_client.async_get_clientsession(hass)
         await _refresh_authentication(hass, entry, session)

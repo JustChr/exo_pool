@@ -166,7 +166,7 @@ class TestGetAcceptedDataContract:
     """shadow/get/accepted → coordinator data matches entity expectations."""
 
     def test_full_reported_state_reaches_callback(self, connected_client):
-        client, mock_conn, received = connected_client
+        _, mock_conn, received = connected_client
         cb = _get_subscribe_callback(mock_conn, "get/accepted")
 
         cb(
@@ -182,7 +182,7 @@ class TestGetAcceptedDataContract:
 
     def test_sensor_data_paths_exist(self, connected_client):
         """All sensor.py read paths must be present in coordinator data."""
-        client, mock_conn, received = connected_client
+        _, mock_conn, received = connected_client
         cb = _get_subscribe_callback(mock_conn, "get/accepted")
         cb(
             topic=f"$aws/things/{SAMPLE_SERIAL}/shadow/get/accepted",
@@ -217,7 +217,7 @@ class TestGetAcceptedDataContract:
 
     def test_binary_sensor_data_paths_exist(self, connected_client):
         """All binary_sensor.py read paths must be present."""
-        client, mock_conn, received = connected_client
+        _, mock_conn, received = connected_client
         cb = _get_subscribe_callback(mock_conn, "get/accepted")
         cb(
             topic=f"$aws/things/{SAMPLE_SERIAL}/shadow/get/accepted",
@@ -246,7 +246,7 @@ class TestGetAcceptedDataContract:
 
     def test_switch_data_paths_exist(self, connected_client):
         """All switch.py read paths must be present."""
-        client, mock_conn, received = connected_client
+        _, mock_conn, received = connected_client
         cb = _get_subscribe_callback(mock_conn, "get/accepted")
         cb(
             topic=f"$aws/things/{SAMPLE_SERIAL}/shadow/get/accepted",
@@ -276,7 +276,7 @@ class TestGetAcceptedDataContract:
 
     def test_number_data_paths_exist(self, connected_client):
         """All number.py read paths must be present."""
-        client, mock_conn, received = connected_client
+        _, mock_conn, received = connected_client
         cb = _get_subscribe_callback(mock_conn, "get/accepted")
         cb(
             topic=f"$aws/things/{SAMPLE_SERIAL}/shadow/get/accepted",
@@ -297,7 +297,7 @@ class TestGetAcceptedDataContract:
 
     def test_climate_data_paths_exist(self, connected_client):
         """climate.py reads from equipment.swc_0 and aux_2."""
-        client, mock_conn, received = connected_client
+        _, mock_conn, received = connected_client
         cb = _get_subscribe_callback(mock_conn, "get/accepted")
         cb(
             topic=f"$aws/things/{SAMPLE_SERIAL}/shadow/get/accepted",
@@ -318,7 +318,7 @@ class TestUpdateDocumentsDataContract:
 
     def test_chlorinator_percentage_change(self, connected_client):
         """Simulates the exact change we observed: swc 30 → 40."""
-        client, mock_conn, received = connected_client
+        _, mock_conn, received = connected_client
         cb = _get_subscribe_callback(mock_conn, "update/documents")
 
         current = json.loads(json.dumps(REAL_REPORTED_STATE))
@@ -338,7 +338,7 @@ class TestUpdateDocumentsDataContract:
 
     def test_aux_switch_toggle(self, connected_client):
         """Simulates aux_1 toggled on."""
-        client, mock_conn, received = connected_client
+        _, mock_conn, received = connected_client
         cb = _get_subscribe_callback(mock_conn, "update/documents")
 
         current = json.loads(json.dumps(REAL_REPORTED_STATE))
@@ -355,7 +355,7 @@ class TestUpdateDocumentsDataContract:
 
     def test_ph_sensor_reading_update(self, connected_client):
         """Simulates a device-pushed sensor reading (no user action)."""
-        client, mock_conn, received = connected_client
+        _, mock_conn, received = connected_client
         cb = _get_subscribe_callback(mock_conn, "update/documents")
 
         current = json.loads(json.dumps(REAL_REPORTED_STATE))
@@ -372,7 +372,7 @@ class TestUpdateDocumentsDataContract:
 
     def test_schedule_activation(self, connected_client):
         """Simulates a schedule becoming active."""
-        client, mock_conn, received = connected_client
+        _, mock_conn, received = connected_client
         cb = _get_subscribe_callback(mock_conn, "update/documents")
 
         current = json.loads(json.dumps(REAL_REPORTED_STATE))

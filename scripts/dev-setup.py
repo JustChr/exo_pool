@@ -25,7 +25,8 @@ import urllib.request
 HA_URL = "http://localhost:8125"
 TOKEN_FILE = ".dev-token"
 ENV_FILE = ".env"
-DEV_USER = {"name": "Developer", "username": "dev", "password": "devdevdev", "language": "en"}
+DEV_PASSWORD = "devdevdev"  # noqa: S105 - intentional dev-only credential
+DEV_USER = {"name": "Developer", "username": "dev", "password": DEV_PASSWORD, "language": "en"}
 HOME_LOCATION = {
     "latitude": -33.701,
     "longitude": 151.209,
@@ -102,7 +103,7 @@ def wait_for_ha(timeout: int = 120) -> None:
                 return
             print(".", end="", flush=True)
             time.sleep(2)
-        except (urllib.error.URLError, OSError):
+        except OSError:
             print(".", end="", flush=True)
             time.sleep(2)
     print("\nTimed out waiting for HA")
@@ -205,6 +206,18 @@ def configure_logging(token: str) -> None:
              {"custom_components.exo_pool": "debug"}, token=token)
 
 
+def _extract_system_options(schema: list) -> list:
+    """Extract system options from a config flow data_schema."""
+    for field in schema:
+        if field.get("name") == "system":
+            opts = field.get("options", {})
+            return list(opts.keys()) if isinstance(opts, dict) else list(opts)
+        if "options" in field:
+            opts = field["options"]
+            return list(opts.keys()) if isinstance(opts, dict) else list(opts)
+    return []
+
+
 def add_integration(token: str, email: str, password: str) -> bool:
     """Add the exo_pool integration via config flow."""
     entries = _request("GET", "/api/config/config_entries/entry", token=token)
@@ -216,16 +229,16 @@ def add_integration(token: str, email: str, password: str) -> bool:
 
     print("Adding exo_pool integration...")
 
-    # Step 1: Start config flow
     flow = _request("POST", "/api/config/config_entries/flow",
                      {"handler": "exo_pool"}, token=token)
     if not flow or "flow_id" not in flow:
         print("Failed to init config flow")
         return False
 
-    # Step 2: Submit credentials
+    flow_id = flow["flow_id"]
+
     print("  Submitting credentials...")
-    result = _request("POST", f"/api/config/config_entries/flow/{flow['flow_id']}",
+    result = _request("POST", f"/api/config/config_entries/flow/{flow_id}",
                        {"email": email, "password": password}, token=token)
     if not result:
         print("  Failed to submit credentials")
@@ -235,42 +248,22 @@ def add_integration(token: str, email: str, password: str) -> bool:
         print(f"  Integration added: {result.get('title', 'exo_pool')}")
         return True
 
-    # Step 3: Select system (if prompted)
-    if result.get("type") == "form" and result.get("step_id") == "select_system":
-        schema = result.get("data_schema", [])
-        # Find the first option from the system selector
-        options = []
-        for field in schema:
-            if field.get("name") == "system":
-                options = list(field.get("options", {}).keys())
-                break
+    if result.get("type") != "form" or result.get("step_id") != "select_system":
+        print(f"  Unexpected flow result: {json.dumps(result)[:500]}")
+        return False
 
-        if not options:
-            # Try extracting from the schema differently
-            print("  Discovering available systems...")
-            # The options might be in a different format
-            for field in schema:
-                if "options" in field:
-                    if isinstance(field["options"], dict):
-                        options = list(field["options"].keys())
-                    elif isinstance(field["options"], list):
-                        options = field["options"]
+    options = _extract_system_options(result.get("data_schema", []))
+    if not options:
+        print(f"  No systems found in flow response: {json.dumps(result)[:500]}")
+        return False
 
-        if not options:
-            print(f"  No systems found in flow response: {json.dumps(result)[:500]}")
-            return False
-
-        system = options[0]
-        print(f"  Selecting system: {system}")
-        result = _request(
-            "POST",
-            f"/api/config/config_entries/flow/{flow['flow_id']}",
-            {"system": system},
-            token=token,
-        )
-        if result and result.get("type") == "create_entry":
-            print(f"  Integration added: {result.get('title', 'exo_pool')}")
-            return True
+    system = options[0]
+    print(f"  Selecting system: {system}")
+    result = _request("POST", f"/api/config/config_entries/flow/{flow_id}",
+                       {"system": system}, token=token)
+    if result and result.get("type") == "create_entry":
+        print(f"  Integration added: {result.get('title', 'exo_pool')}")
+        return True
 
     print(f"  Unexpected flow result: {json.dumps(result)[:500]}")
     return False
@@ -308,11 +301,11 @@ def main() -> None:
 
     print(f"\nHA dev instance ready at {HA_URL}")
     print(f"Login: {DEV_USER['username']} / {DEV_USER['password']}")
-    print(f"\nUseful commands:")
-    print(f"  make logs       # watch logs")
-    print(f"  make restart    # restart after code changes")
-    print(f"  make stop       # stop container")
-    print(f"  make test       # run tests")
+    print("\nUseful commands:")
+    print("  make logs       # watch logs")
+    print("  make restart    # restart after code changes")
+    print("  make stop       # stop container")
+    print("  make test       # run tests")
 
 
 if __name__ == "__main__":
