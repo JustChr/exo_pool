@@ -25,7 +25,7 @@ import urllib.request
 HA_URL = "http://localhost:8125"
 TOKEN_FILE = ".dev-token"
 ENV_FILE = ".env"
-DEV_PASSWORD = "devdevdev"  # noqa: S105 - intentional dev-only credential
+DEV_PASSWORD = "devdevdev"  # NOSONAR - intentional dev-only credential, not a real secret
 DEV_USER = {"name": "Developer", "username": "dev", "password": DEV_PASSWORD, "language": "en"}
 HOME_LOCATION = {
     "latitude": -33.701,

@@ -990,15 +990,14 @@ def _schedule_credential_refresh(hass: HomeAssistant, entry: ConfigEntry) -> Non
     _LOGGER.debug("Scheduling MQTT credential refresh in %.0fs", delay)
 
     async def _refresh_and_reconnect() -> None:
-        try:
-            await asyncio.sleep(delay)
-        except asyncio.CancelledError:
-            raise
+        await asyncio.sleep(delay)
         _LOGGER.info("Refreshing AWS credentials for MQTT")
-        session = aiohttp_client.async_get_clientsession(hass)
-        await _refresh_authentication(hass, entry, session)
-        # _refresh_authentication stores new credentials via _store_aws_credentials
-        await hass.async_add_executor_job(_connect_mqtt, hass, entry)
+        try:
+            session = aiohttp_client.async_get_clientsession(hass)
+            await _refresh_authentication(hass, entry, session)
+            await hass.async_add_executor_job(_connect_mqtt, hass, entry)
+        except Exception:
+            _LOGGER.warning("MQTT credential refresh failed", exc_info=True)
 
     store["credential_refresh_task"] = hass.async_create_task(
         _refresh_and_reconnect()
