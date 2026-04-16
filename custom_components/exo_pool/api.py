@@ -107,7 +107,7 @@ DEBOUNCE_JITTER_MAX = 90.0
 IOT_ENDPOINT = "a1zi08qpbrtjyq-ats.iot.us-east-1.amazonaws.com"
 IOT_REGION = "us-east-1"
 MQTT_CREDENTIAL_REFRESH_BUFFER = 300  # refresh 5 min before expiry
-REST_FALLBACK_INTERVAL = 1800  # 30 min REST poll as safety net
+REST_FALLBACK_INTERVAL = 7200  # 2 hour REST poll as safety net
 
 
 async def _async_rate_limit(hass: HomeAssistant, entry: ConfigEntry) -> None:
