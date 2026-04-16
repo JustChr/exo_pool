@@ -410,6 +410,31 @@ class TestReconnection:
         )
         assert client.connected is True
 
+    def test_on_connection_resumed_calls_reconnect_failed_on_subscribe_error(
+        self, build_client, mock_mqtt_connection, mock_event_loop
+    ):
+        reconnect_cb = MagicMock()
+        client = build_client()
+        client.set_reconnect_failed_callback(reconnect_cb)
+        client.connect(SAMPLE_CREDENTIALS)
+
+        # Make subscribe fail on reconnect (simulating expired credentials)
+        sub_future = MagicMock()
+        sub_future.result.side_effect = Exception("Forbidden")
+        mock_mqtt_connection.subscribe.return_value = (sub_future, 1)
+
+        client._on_connection_interrupted(
+            connection=mock_mqtt_connection, error=Exception("blip")
+        )
+        client._on_connection_resumed(
+            connection=mock_mqtt_connection,
+            return_code=0,
+            session_present=False,
+        )
+
+        assert client.connected is False
+        mock_event_loop.call_soon_threadsafe.assert_called_with(reconnect_cb)
+
 
 class TestHeartbeat:
     """Heartbeat (periodic shadow/get) tests."""

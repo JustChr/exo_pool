@@ -61,6 +61,7 @@ class ExoMqttClient:
         self._connection: mqtt.Connection | None = None
         self._connected = False
         self._shadow_callback: Callable[[dict], None] | None = None
+        self._reconnect_failed_callback: Callable[[], None] | None = None
         self._heartbeat_cancel: Callable | None = None
 
         # CRT resources - created once, reused across reconnections
@@ -81,6 +82,15 @@ class ExoMqttClient:
         invoked on the event loop passed to the constructor.
         """
         self._shadow_callback = callback
+
+    def set_reconnect_failed_callback(self, callback: Callable[[], None]) -> None:
+        """Register a callback invoked when re-subscribe fails after reconnect.
+
+        This typically means credentials have expired. The callback is
+        invoked on the HA event loop and should refresh credentials and
+        call connect() again.
+        """
+        self._reconnect_failed_callback = callback
 
     def connect(self, credentials: dict) -> None:
         """Connect to AWS IoT and subscribe to shadow topics.
@@ -148,8 +158,12 @@ class ExoMqttClient:
             on_connection_resumed=self._on_connection_resumed,
         )
 
-    def _subscribe_shadow_topics(self) -> None:
-        """Subscribe to all shadow topics with the appropriate callbacks."""
+    def _subscribe_shadow_topics(self) -> bool:
+        """Subscribe to all shadow topics with the appropriate callbacks.
+
+        Returns True if at least one topic was subscribed successfully.
+        """
+        success_count = 0
         for topic_template in _SUBSCRIBE_TOPICS:
             topic = topic_template.format(serial=self._serial)
             try:
@@ -160,9 +174,11 @@ class ExoMqttClient:
                 )
                 future.result(timeout=_SUBSCRIBE_TIMEOUT)
                 _LOGGER.debug("Subscribed to %s", topic)
+                success_count += 1
             except Exception:
                 _LOGGER.warning("Failed to subscribe to %s", topic, exc_info=True)
             time.sleep(_SUBSCRIBE_DELAY)
+        return success_count > 0
 
     def _request_shadow(self) -> None:
         """Publish to shadow/get to request the current shadow state."""
@@ -242,8 +258,15 @@ class ExoMqttClient:
         )
         self._connected = True
         # Re-subscribe since we use clean_session=True
-        self._subscribe_shadow_topics()
-        self._request_shadow()
+        if self._subscribe_shadow_topics():
+            self._request_shadow()
+        else:
+            _LOGGER.warning(
+                "All subscribes failed after reconnect - credentials may have expired"
+            )
+            self._connected = False
+            if self._reconnect_failed_callback is not None:
+                self._loop.call_soon_threadsafe(self._reconnect_failed_callback)
 
 
 def _summarize_changes(old: dict, new: dict, path: str = "") -> list[str]:

@@ -899,6 +899,22 @@ async def _post_write(
         return response.status, response_text
 
 
+async def _async_refresh_and_reconnect(
+    hass: HomeAssistant, entry: ConfigEntry
+) -> None:
+    """Refresh AWS credentials and reconnect MQTT.
+
+    Called when MQTT reconnect fails due to expired credentials,
+    or proactively by the credential refresh timer.
+    """
+    try:
+        session = aiohttp_client.async_get_clientsession(hass)
+        await _refresh_authentication(hass, entry, session)
+        await hass.async_add_executor_job(_connect_mqtt, hass, entry)
+    except Exception:
+        _LOGGER.warning("MQTT credential refresh and reconnect failed", exc_info=True)
+
+
 def _connect_mqtt(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Create and connect the MQTT client if AWS credentials are available.
 
@@ -953,6 +969,16 @@ def _connect_mqtt(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
     mqtt_client.set_shadow_callback(_on_shadow_update)
 
+    def _on_reconnect_failed() -> None:
+        """Called on HA event loop when MQTT re-subscribe fails (stale credentials)."""
+        _LOGGER.warning("MQTT reconnect failed - refreshing credentials")
+        hass.async_create_background_task(
+            _async_refresh_and_reconnect(hass, entry),
+            name="exo_pool_reconnect_refresh",
+        )
+
+    mqtt_client.set_reconnect_failed_callback(_on_reconnect_failed)
+
     try:
         mqtt_client.connect(credentials)
         # Relax REST polling - MQTT push resets the timer on each update
@@ -998,18 +1024,13 @@ def _schedule_credential_refresh(hass: HomeAssistant, entry: ConfigEntry) -> Non
     delay = max(0, expires_at - time.time() - MQTT_CREDENTIAL_REFRESH_BUFFER)
     _LOGGER.debug("Scheduling MQTT credential refresh in %.0fs", delay)
 
-    async def _refresh_and_reconnect() -> None:
+    async def _proactive_refresh() -> None:
         await asyncio.sleep(delay)
         _LOGGER.info("Refreshing AWS credentials for MQTT")
-        try:
-            session = aiohttp_client.async_get_clientsession(hass)
-            await _refresh_authentication(hass, entry, session)
-            await hass.async_add_executor_job(_connect_mqtt, hass, entry)
-        except Exception:
-            _LOGGER.warning("MQTT credential refresh failed", exc_info=True)
+        await _async_refresh_and_reconnect(hass, entry)
 
     store["credential_refresh_task"] = hass.async_create_background_task(
-        _refresh_and_reconnect(),
+        _proactive_refresh(),
         name="exo_pool_credential_refresh",
     )
 
