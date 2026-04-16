@@ -177,8 +177,8 @@ class TestGetAcceptedDataContract:
 
         assert len(received) == 1
         data = received[0]
-        # This IS coordinator.data - every entity reads from this dict
-        assert data is not None
+        # Round-trip fidelity: the reported state must arrive unchanged
+        assert data == REAL_REPORTED_STATE
 
     def test_sensor_data_paths_exist(self, connected_client):
         """All sensor.py read paths must be present in coordinator data."""
@@ -290,10 +290,10 @@ class TestGetAcceptedDataContract:
         assert swc["dual_link"] == 0
 
         # ExoPoolSwcOutputNumber
-        assert isinstance(swc["swc"], int)
+        assert swc["swc"] == REAL_REPORTED_STATE["equipment"]["swc_0"]["swc"]
 
         # ExoPoolSwcLowOutputNumber
-        assert isinstance(swc["swc_low"], int)
+        assert swc["swc_low"] == REAL_REPORTED_STATE["equipment"]["swc_0"]["swc_low"]
 
     def test_climate_data_paths_exist(self, connected_client):
         """climate.py reads from equipment.swc_0 and aux_2."""

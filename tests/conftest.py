@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib
+import pathlib
 import sys
 import types
 
@@ -11,9 +12,10 @@ import pytest
 # without a full HA installation. mqtt_client.py itself has no HA deps,
 # but importing via custom_components.exo_pool triggers __init__.py which does.
 # We pre-register the mqtt_client module directly to short-circuit that.
+_REPO_ROOT = pathlib.Path(__file__).parent.parent
 _mqtt_spec = importlib.util.spec_from_file_location(
     "custom_components.exo_pool.mqtt_client",
-    "custom_components/exo_pool/mqtt_client.py",
+    _REPO_ROOT / "custom_components" / "exo_pool" / "mqtt_client.py",
 )
 _mqtt_mod = importlib.util.module_from_spec(_mqtt_spec)
 

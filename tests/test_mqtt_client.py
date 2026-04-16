@@ -138,7 +138,7 @@ class TestConnect:
         # Connect again (e.g. credential refresh)
         client.connect(SAMPLE_CREDENTIALS)
         # Should have disconnected the old connection first
-        assert mock_mqtt_connection.disconnect.call_count >= 1
+        assert mock_mqtt_connection.disconnect.call_count == 1
 
 
 class TestDisconnect:
@@ -149,7 +149,7 @@ class TestDisconnect:
         client.connect(SAMPLE_CREDENTIALS)
         client.disconnect()
 
-        mock_mqtt_connection.disconnect.assert_called()
+        mock_mqtt_connection.disconnect.assert_called_once()
         assert client.connected is False
 
     def test_disconnect_when_not_connected(self, build_client):
@@ -258,14 +258,15 @@ class TestShadowCallback:
 
         callback.assert_called_once_with(reported_state)
 
-    def test_no_callback_set_does_not_raise(
-        self, build_client, mock_mqtt_connection
+    def test_no_callback_set_does_not_bridge(
+        self, build_client, mock_mqtt_connection, mock_event_loop
     ):
         client = build_client()
         # No callback set
         client.connect(SAMPLE_CREDENTIALS)
+        mock_event_loop.call_soon_threadsafe.reset_mock()
 
-        # Find any subscription callback and fire it - should not raise
+        # Fire a shadow update - should not attempt to bridge to event loop
         for c in mock_mqtt_connection.subscribe.call_args_list:
             topic = c.kwargs.get("topic") or c.args[0]
             if "update/documents" in topic:
@@ -283,6 +284,8 @@ class TestShadowCallback:
                     retain=False,
                 )
                 break
+
+        mock_event_loop.call_soon_threadsafe.assert_not_called()
 
     def test_malformed_payload_does_not_raise(
         self, build_client, mock_mqtt_connection
@@ -308,6 +311,61 @@ class TestShadowCallback:
 
         # Callback should NOT have been called with bad data
         callback.assert_not_called()
+
+    def test_update_accepted_does_not_invoke_callback(
+        self, build_client, mock_mqtt_connection, mock_event_loop
+    ):
+        """update/accepted carries partial state - should not feed coordinator."""
+        callback = MagicMock()
+        client = build_client()
+        client.set_shadow_callback(callback)
+        client.connect(SAMPLE_CREDENTIALS)
+        mock_event_loop.call_soon_threadsafe.reset_mock()
+
+        for c in mock_mqtt_connection.subscribe.call_args_list:
+            topic = c.kwargs.get("topic") or c.args[0]
+            if "update/accepted" in topic:
+                mqtt_callback = c.kwargs.get("callback") or c.args[2]
+                mqtt_callback(
+                    topic=topic,
+                    payload=json.dumps({
+                        "state": {"desired": {"equipment": {"swc_0": {"swc": 40}}}},
+                        "metadata": {},
+                        "version": 150335,
+                        "timestamp": 1776208189,
+                    }).encode(),
+                    dup=False, qos=1, retain=False,
+                )
+                break
+
+        mock_event_loop.call_soon_threadsafe.assert_not_called()
+
+    def test_update_delta_does_not_invoke_callback(
+        self, build_client, mock_mqtt_connection, mock_event_loop
+    ):
+        """update/delta carries only changed fields - should not feed coordinator."""
+        callback = MagicMock()
+        client = build_client()
+        client.set_shadow_callback(callback)
+        client.connect(SAMPLE_CREDENTIALS)
+        mock_event_loop.call_soon_threadsafe.reset_mock()
+
+        for c in mock_mqtt_connection.subscribe.call_args_list:
+            topic = c.kwargs.get("topic") or c.args[0]
+            if "update/delta" in topic:
+                mqtt_callback = c.kwargs.get("callback") or c.args[2]
+                mqtt_callback(
+                    topic=topic,
+                    payload=json.dumps({
+                        "state": {"equipment": {"swc_0": {"swc": 40}}},
+                        "version": 150335,
+                        "timestamp": 1776208189,
+                    }).encode(),
+                    dup=False, qos=1, retain=False,
+                )
+                break
+
+        mock_event_loop.call_soon_threadsafe.assert_not_called()
 
 
 class TestPublishDesired:
@@ -386,7 +444,7 @@ class TestReconnection:
             for c in new_pub_calls
             if (c.kwargs.get("topic") or c.args[0]).endswith("/shadow/get")
         ]
-        assert len(get_calls) >= 1
+        assert len(get_calls) == 1
 
     def test_on_connection_resumed_restores_connected_state(
         self, build_client, mock_mqtt_connection
@@ -417,7 +475,9 @@ class TestHeartbeat:
         mock_event_loop.call_later.assert_called()
         args = mock_event_loop.call_later.call_args
         interval = args.args[0] if args.args else args[0][0]
-        assert interval == 900  # _HEARTBEAT_INTERVAL
+        from custom_components.exo_pool.mqtt_client import _HEARTBEAT_INTERVAL
+
+        assert interval == _HEARTBEAT_INTERVAL
 
     def test_heartbeat_tick_requests_shadow(
         self, build_client, mock_mqtt_connection
