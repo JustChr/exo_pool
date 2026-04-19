@@ -4,6 +4,15 @@ A custom integration to connect your Zodiac iAqualink **Exo** pool system to Hom
 
 ## 🆕 What’s New
 
+- **19 Apr 2026**
+1) Switch toggles (Aux, Chlorinator, Power, etc.) no longer block the integration for 55 seconds after each change.
+  1.1) Switches now send immediately with no post-write cooldown.
+  1.2) On failure the switch reverts to its previous state and a Home Assistant error notification is shown.
+  1.3) A single automatic retry is attempted on transient network errors before reporting failure.
+2) New `exo_pool.set_schedules` service to update multiple schedules in a single API call.
+  2.1) All schedule changes are sent as one batch, triggering only one cooldown period instead of one per schedule.
+  2.2) Bulk schedule updates that previously took several minutes now complete in ~45 seconds.
+
 - **15 Apr 2026**
 1) **Real-time updates via AWS IoT MQTT.** The integration now connects to the same AWS IoT shadow endpoint used by the official iAqualink app, giving sub-second state sync instead of REST polling. No additional setup required - it uses credentials already provided by the Zodiac login API.
 2) Writes (set points, switches, schedules) now go via MQTT when connected, eliminating 429 rate limit errors on writes.
@@ -104,6 +113,28 @@ data:
   start: "11:00"
   end: "23:00"
 ```
+
+### `exo_pool.set_schedules`
+Update multiple schedules in a **single API call**. All changes are sent together, so only one cooldown period applies regardless of how many schedules you update.
+
+```yaml
+service: exo_pool.set_schedules
+data:
+  device_id: 1a2b3c4d5e6f7g8h9i0j
+  schedules:
+    - schedule: sch1
+      start: "08:00"
+      end: "22:00"
+    - schedule: sch2
+      start: "10:00"
+      end: "20:00"
+      rpm: 2000
+    - schedule: sch3
+      start: "00:00"
+      end: "00:00"
+```
+
+Each entry must include a `schedule` key (e.g. `sch1`). Setting `start` and `end` to `00:00` disables the schedule. `rpm` is optional and only applies to VSP schedules. If you only have one Exo Pool device, `device_id` can be omitted.
 
 ### `exo_pool.disable_schedule`
 Disable a schedule by setting start and end to `00:00`.
