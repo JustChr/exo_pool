@@ -7,6 +7,10 @@ Real-time state sync via AWS IoT MQTT (same protocol as the official app) — no
 
 ## What's New
 
+### 19 Apr 2026 – v0.1.20
+
+- **State bounce fix** – After sending a command via MQTT (e.g. turning off the chlorinator), the UI no longer flips back to the old state. AWS IoT echoes back an intermediate shadow update before the device processes the command; that stale update is now ignored during the 5-second post-write settling window.
+
 ### 19 Apr 2026 – v0.1.19
 
 - **Instant switches** – Aux, Chlorinator, Power and all other switches now toggle immediately with no post-write cooldown. On failure a HA error notification is shown and a single automatic retry is attempted.
