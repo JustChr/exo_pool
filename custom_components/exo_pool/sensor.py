@@ -8,7 +8,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .api import get_coordinator, ERROR_CODES
-from .const import DOMAIN, FILTER_PUMP_TYPE_MAP
+from .const import DOMAIN, FILTER_PUMP_TYPE_MAP, device_info as _device_info, swc0
 from homeassistant.const import EntityCategory, PERCENTAGE
 import logging
 
@@ -51,21 +51,11 @@ class TempSensor(CoordinatorEntity, SensorEntity):
         self._attr_name = "Temperature"
         self._attr_unique_id = f"{entry.entry_id}_temp"
         self._attr_native_unit_of_measurement = "°C"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.entry_id)},
-            "name": "Exo Pool",
-            "manufacturer": "Zodiac",
-            "model": "Exo",
-        }
+        self._attr_device_info = _device_info(entry)
 
     @property
     def native_value(self):
-        return (
-            self.coordinator.data.get("equipment", {})
-            .get("swc_0", {})
-            .get("sns_3", {})
-            .get("value")
-        )
+        return swc0(self.coordinator.data).get("sns_3", {}).get("value")
 
 
 class ORPSensor(CoordinatorEntity, SensorEntity):
@@ -79,30 +69,16 @@ class ORPSensor(CoordinatorEntity, SensorEntity):
         self._entry = entry
         self._attr_name = "ORP"
         self._attr_unique_id = f"{entry.entry_id}_orp"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.entry_id)},
-            "name": "Exo Pool",
-            "manufacturer": "Zodiac",
-            "model": "Exo",
-        }
+        self._attr_device_info = _device_info(entry)
 
     @property
     def native_value(self):
-        return (
-            self.coordinator.data.get("equipment", {})
-            .get("swc_0", {})
-            .get("sns_2", {})
-            .get("value")
-        )
+        return swc0(self.coordinator.data).get("sns_2", {}).get("value")
 
     @property
     def extra_state_attributes(self):
         """Provide additional ORP attributes."""
-        return {
-            "set_point": self.coordinator.data.get("equipment", {})
-            .get("swc_0", {})
-            .get("orp_sp")
-        }
+        return {"set_point": swc0(self.coordinator.data).get("orp_sp")}
 
 
 class PHSensor(CoordinatorEntity, SensorEntity):
@@ -116,34 +92,18 @@ class PHSensor(CoordinatorEntity, SensorEntity):
         self._entry = entry
         self._attr_name = "pH"
         self._attr_unique_id = f"{entry.entry_id}_ph"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.entry_id)},
-            "name": "Exo Pool",
-            "manufacturer": "Zodiac",
-            "model": "Exo",
-        }
+        self._attr_device_info = _device_info(entry)
 
     @property
     def native_value(self):
-        value = (
-            self.coordinator.data.get("equipment", {})
-            .get("swc_0", {})
-            .get("sns_1", {})
-            .get("value")
-        )
+        value = swc0(self.coordinator.data).get("sns_1", {}).get("value")
         return value / 10 if value is not None else None
 
     @property
     def extra_state_attributes(self):
         """Provide additional pH attributes."""
-        set_point = (
-            self.coordinator.data.get("equipment", {}).get("swc_0", {}).get("ph_sp")
-        )
-        return {
-            "set_point": (
-                set_point / 10 if set_point is not None else None
-            ),  # Convert to pH scale (e.g., 72 -> 7.2)
-        }
+        set_point = swc0(self.coordinator.data).get("ph_sp")
+        return {"set_point": set_point / 10 if set_point is not None else None}
 
 
 class SWCOutputSensor(CoordinatorEntity, SensorEntity):
@@ -158,16 +118,11 @@ class SWCOutputSensor(CoordinatorEntity, SensorEntity):
         self._entry = entry
         self._attr_name = "SWC Output"
         self._attr_unique_id = f"{entry.entry_id}_swc_output"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.entry_id)},
-            "name": "Exo Pool",
-            "manufacturer": "Zodiac",
-            "model": "Exo",
-        }
+        self._attr_device_info = _device_info(entry)
 
     @property
     def native_value(self):
-        return self.coordinator.data.get("equipment", {}).get("swc_0", {}).get("swc")
+        return swc0(self.coordinator.data).get("swc")
 
 
 class SWCLowOutputSensor(CoordinatorEntity, SensorEntity):
@@ -182,18 +137,11 @@ class SWCLowOutputSensor(CoordinatorEntity, SensorEntity):
         self._entry = entry
         self._attr_name = "SWC Low Output"
         self._attr_unique_id = f"{entry.entry_id}_swc_low_output"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.entry_id)},
-            "name": "Exo Pool",
-            "manufacturer": "Zodiac",
-            "model": "Exo",
-        }
+        self._attr_device_info = _device_info(entry)
 
     @property
     def native_value(self):
-        return (
-            self.coordinator.data.get("equipment", {}).get("swc_0", {}).get("swc_low")
-        )
+        return swc0(self.coordinator.data).get("swc_low")
 
 
 class ErrorCodeSensor(CoordinatorEntity, SensorEntity):
@@ -207,29 +155,16 @@ class ErrorCodeSensor(CoordinatorEntity, SensorEntity):
         self._entry = entry
         self._attr_name = "Error Code"
         self._attr_unique_id = f"{entry.entry_id}_error_code"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.entry_id)},
-            "name": "Exo Pool",
-            "manufacturer": "Zodiac",
-            "model": "Exo",
-        }
+        self._attr_device_info = _device_info(entry)
 
     @property
     def native_value(self):
-        return (
-            self.coordinator.data.get("equipment", {})
-            .get("swc_0", {})
-            .get("error_code")
-        )
+        return swc0(self.coordinator.data).get("error_code")
 
     @property
     def extra_state_attributes(self):
         """Provide the error message as an attribute."""
-        code = (
-            self.coordinator.data.get("equipment", {})
-            .get("swc_0", {})
-            .get("error_code")
-        )
+        code = swc0(self.coordinator.data).get("error_code")
         return {
             "error_message": ERROR_CODES.get(
                 int(code) if code is not None else 0, "Unknown Error"
@@ -248,21 +183,12 @@ class ErrorCodeTextSensor(CoordinatorEntity, SensorEntity):
         self._entry = entry
         self._attr_name = "Error Code Text"
         self._attr_unique_id = f"{entry.entry_id}_error_code_text"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.entry_id)},
-            "name": "Exo Pool",
-            "manufacturer": "Zodiac",
-            "model": "Exo",
-        }
+        self._attr_device_info = _device_info(entry)
 
     @property
     def native_value(self):
         """Return the error message text."""
-        code = (
-            self.coordinator.data.get("equipment", {})
-            .get("swc_0", {})
-            .get("error_code")
-        )
+        code = swc0(self.coordinator.data).get("error_code")
         return ERROR_CODES.get(int(code) if code is not None else 0, "No Error")
 
 
@@ -280,12 +206,7 @@ class WifiRssiSensor(CoordinatorEntity, SensorEntity):
         self._entry = entry
         self._attr_name = "WiFi RSSI"
         self._attr_unique_id = f"{entry.entry_id}_wifi_rssi"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.entry_id)},
-            "name": "Exo Pool",
-            "manufacturer": "Zodiac",
-            "model": "Exo",
-        }
+        self._attr_device_info = _device_info(entry)
 
     @property
     def native_value(self):
@@ -304,21 +225,16 @@ class HardwareSensor(CoordinatorEntity, SensorEntity):
         self._entry = entry
         self._attr_name = "Hardware"
         self._attr_unique_id = f"{entry.entry_id}_hardware"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.entry_id)},
-            "name": "Exo Pool",
-            "manufacturer": "Zodiac",
-            "model": "Exo",
-        }
+        self._attr_device_info = _device_info(entry)
 
     @property
     def native_value(self):
         """Return a summary of enabled hardware capabilities."""
+        hw = swc0(self.coordinator.data)
         capabilities = []
-        swc_data = self.coordinator.data.get("equipment", {}).get("swc_0", {})
-        if swc_data.get("ph_only", 0) == 1:
+        if hw.get("ph_only", 0) == 1:
             capabilities.append("PH")
-        if swc_data.get("dual_link", 0) == 1:
+        if hw.get("dual_link", 0) == 1:
             capabilities.append("ORP")
         pump_type_label = self._get_filter_pump_type_label()
         if pump_type_label:
@@ -328,23 +244,23 @@ class HardwareSensor(CoordinatorEntity, SensorEntity):
     @property
     def extra_state_attributes(self):
         """Provide detailed hardware capability flags."""
-        swc_data = self.coordinator.data.get("equipment", {}).get("swc_0", {})
+        hw = swc0(self.coordinator.data)
         pump_type_label = self._get_filter_pump_type_label()
         return {
             "filter_pump_type": pump_type_label,
             "variable_speed_pump": pump_type_label == "VSP"
-            or (pump_type_label is None and swc_data.get("vsp", 0) == 1),
-            "ph_control": swc_data.get("ph_only", 0) == 1,
-            "orp_control": swc_data.get("dual_link", 0) == 1,
+            or (pump_type_label is None and hw.get("vsp", 0) == 1),
+            "ph_control": hw.get("ph_only", 0) == 1,
+            "orp_control": hw.get("dual_link", 0) == 1,
         }
 
     def _get_filter_pump_type_label(self):
         """Translate the filter pump type code into a label."""
-        swc_data = self.coordinator.data.get("equipment", {}).get("swc_0", {})
-        pump_type_value = swc_data.get("filter_pump", {}).get("type")
+        hw = swc0(self.coordinator.data)
+        pump_type_value = hw.get("filter_pump", {}).get("type")
         pump_type_label = FILTER_PUMP_TYPE_MAP.get(pump_type_value)
         if pump_type_label:
             return pump_type_label
-        if swc_data.get("vsp", 0) == 1:
+        if hw.get("vsp", 0) == 1:
             return FILTER_PUMP_TYPE_MAP.get(2)
         return None

@@ -12,7 +12,8 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .api import get_coordinator, DOMAIN, set_heating_value, set_pool_value
+from .api import get_coordinator, set_heating_value, set_pool_value
+from .const import DOMAIN, device_info as _device_info, swc0
 
 import logging
 
@@ -27,10 +28,7 @@ async def async_setup_entry(
     created = False
 
     def _should_create() -> bool:
-        data = coordinator.data or {}
-        swc = data.get("equipment", {}).get("swc_0", {})
-        aux2 = swc.get("aux_2", {})
-        return aux2.get("mode") == 3
+        return swc0(coordinator.data).get("aux_2", {}).get("mode") == 3
 
     # Create immediately if present
     if _should_create():
@@ -64,20 +62,13 @@ class ExoHeatPumpClimate(CoordinatorEntity, ClimateEntity):
         self._entry = entry
         self._attr_name = "Heat Pump"
         self._attr_unique_id = f"{entry.entry_id}_heat_pump"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.entry_id)},
-            "name": "Exo Pool",
-            "manufacturer": "Zodiac",
-            "model": "Exo",
-        }
+        self._attr_device_info = _device_info(entry)
 
     # Availability follows Aux 2 remaining in heat mode
     @property
     def available(self) -> bool:
         data = self.coordinator.data or {}
-        swc = data.get("equipment", {}).get("swc_0", {})
-        aux2 = swc.get("aux_2", {})
-        return aux2.get("mode") == 3 and (data.get("heating") is not None)
+        return swc0(data).get("aux_2", {}).get("mode") == 3 and data.get("heating") is not None
 
     @property
     def temperature_unit(self) -> str:
@@ -85,42 +76,28 @@ class ExoHeatPumpClimate(CoordinatorEntity, ClimateEntity):
 
     @property
     def current_temperature(self) -> float | None:
-        # Water temperature (sns_3.value) if present
-        return (
-            self.coordinator.data.get("equipment", {})
-            .get("swc_0", {})
-            .get("sns_3", {})
-            .get("value")
-        )
+        return swc0(self.coordinator.data).get("sns_3", {}).get("value")
 
     @property
     def target_temperature(self) -> float | None:
-        heating = (self.coordinator.data or {}).get("heating", {})
-        return heating.get("sp")
+        return (self.coordinator.data or {}).get("heating", {}).get("sp")
 
     @property
     def min_temp(self) -> float:
-        heating = (self.coordinator.data or {}).get("heating", {})
-        return float(heating.get("sp_min", 10))
+        return float((self.coordinator.data or {}).get("heating", {}).get("sp_min", 10))
 
     @property
     def max_temp(self) -> float:
-        heating = (self.coordinator.data or {}).get("heating", {})
-        return float(heating.get("sp_max", 40))
+        return float((self.coordinator.data or {}).get("heating", {}).get("sp_max", 40))
 
     @property
     def hvac_mode(self) -> HVACMode:
-        data = self.coordinator.data or {}
-        swc = data.get("equipment", {}).get("swc_0", {})
-        aux2 = swc.get("aux_2", {})
-        return HVACMode.HEAT if aux2.get("state") == 1 else HVACMode.OFF
+        return HVACMode.HEAT if swc0(self.coordinator.data).get("aux_2", {}).get("state") == 1 else HVACMode.OFF
 
     @property
     def hvac_action(self) -> HVACAction | None:
-        # Prefer aux_2.state for run indicator; fall back to heating.state mapping
         data = self.coordinator.data or {}
-        swc = data.get("equipment", {}).get("swc_0", {})
-        aux2 = swc.get("aux_2", {})
+        aux2 = swc0(data).get("aux_2", {})
         if aux2.get("state") == 1:
             return HVACAction.HEATING
         state = (data.get("heating", {}) or {}).get("state")
@@ -130,8 +107,7 @@ class ExoHeatPumpClimate(CoordinatorEntity, ClimateEntity):
     def extra_state_attributes(self) -> dict:
         data = self.coordinator.data or {}
         heating = data.get("heating", {}) or {}
-        swc = data.get("equipment", {}).get("swc_0", {})
-        aux2 = swc.get("aux_2", {})
+        aux2 = swc0(data).get("aux_2", {})
         # Expose all other heating fields as attributes for visibility
         attrs: dict = {
             "aux2_mode": aux2.get("mode"),

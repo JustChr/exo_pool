@@ -1,18 +1,19 @@
 from homeassistant.components.number import NumberEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.const import PERCENTAGE, UnitOfTime
 from .api import (
     get_coordinator,
     set_pool_value,
-    DOMAIN,
     async_set_refresh_interval,
     REFRESH_MIN,
     REFRESH_MAX,
     REFRESH_DEFAULT,
 )
+from .const import DOMAIN, device_info as _device_info, swc0
 import logging
 
 _LOGGER = logging.getLogger(__name__)
@@ -23,18 +24,11 @@ async def async_setup_entry(
 ) -> None:
     """Set up the number platform for Exo Pool."""
     _LOGGER.debug("Setting up number platform for entry: %s", entry.entry_id)
-    # Retrieve shared coordinator
     coordinator = await get_coordinator(hass, entry)
 
     def _capabilities() -> tuple[bool, bool]:
-        swc = (
-            coordinator.data.get("equipment", {}).get("swc_0", {})
-            if coordinator.data
-            else {}
-        )
-        ph_capable = swc.get("ph_only", 0) == 1
-        orp_capable = swc.get("dual_link", 0) == 1
-        return ph_capable, orp_capable
+        hw = swc0(coordinator.data)
+        return hw.get("ph_only", 0) == 1, hw.get("dual_link", 0) == 1
 
     entities: list[NumberEntity] = [
         ExoPoolRefreshIntervalNumber(entry, coordinator),
@@ -86,32 +80,21 @@ class ExoPoolORPSetPointNumber(CoordinatorEntity, NumberEntity):
         self._entry = entry
         self._attr_name = "ORP Set Point"
         self._attr_unique_id = f"{entry.entry_id}_orp_set_point"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.entry_id)},
-            "name": "Exo Pool",
-            "manufacturer": "Zodiac",
-        }
+        self._attr_device_info = _device_info(entry)
 
     @property
     def native_value(self):
-        """Return the current ORP set point value."""
-        return self.coordinator.data.get("equipment", {}).get("swc_0", {}).get("orp_sp")
+        return swc0(self.coordinator.data).get("orp_sp")
 
     async def async_set_native_value(self, value):
-        """Set the ORP set point value."""
-        await set_pool_value(self.hass, self._entry, "orp_sp", int(value))
+        try:
+            await set_pool_value(self.hass, self._entry, "orp_sp", int(value))
+        except Exception as err:
+            raise HomeAssistantError(f"ORP Set Point: {err}") from err
 
     @property
     def available(self):
-        """Return availability based on Exo Connected binary sensor and ORP capability."""
-        return (
-            self.coordinator.data is not None
-            and bool(self.coordinator.data)
-            and self.coordinator.data.get("equipment", {})
-            .get("swc_0", {})
-            .get("dual_link", 0)
-            == 1
-        )
+        return swc0(self.coordinator.data).get("dual_link", 0) == 1
 
 
 class ExoPoolPHSetPointNumber(CoordinatorEntity, NumberEntity):
@@ -128,33 +111,22 @@ class ExoPoolPHSetPointNumber(CoordinatorEntity, NumberEntity):
         self._entry = entry
         self._attr_name = "pH Set Point"
         self._attr_unique_id = f"{entry.entry_id}_ph_set_point"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.entry_id)},
-            "name": "Exo Pool",
-            "manufacturer": "Exo Pool",
-        }
+        self._attr_device_info = _device_info(entry)
 
     @property
     def native_value(self):
-        """Return the current pH set point value."""
-        value = self.coordinator.data.get("equipment", {}).get("swc_0", {}).get("ph_sp")
+        value = swc0(self.coordinator.data).get("ph_sp")
         return value / 10 if value is not None else None
 
     async def async_set_native_value(self, value):
-        """Set the pH set point value."""
-        await set_pool_value(self.hass, self._entry, "ph_sp", value * 10)
+        try:
+            await set_pool_value(self.hass, self._entry, "ph_sp", value * 10)
+        except Exception as err:
+            raise HomeAssistantError(f"pH Set Point: {err}") from err
 
     @property
     def available(self):
-        """Return availability based on Exo Connected binary sensor and PH capability."""
-        return (
-            self.coordinator.data is not None
-            and bool(self.coordinator.data)
-            and self.coordinator.data.get("equipment", {})
-            .get("swc_0", {})
-            .get("ph_only", 0)
-            == 1
-        )
+        return swc0(self.coordinator.data).get("ph_only", 0) == 1
 
 
 class ExoPoolSwcOutputNumber(CoordinatorEntity, NumberEntity):
@@ -172,24 +144,20 @@ class ExoPoolSwcOutputNumber(CoordinatorEntity, NumberEntity):
         self._entry = entry
         self._attr_name = "SWC Output"
         self._attr_unique_id = f"{entry.entry_id}_swc_output_set"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.entry_id)},
-            "name": "Exo Pool",
-            "manufacturer": "Zodiac",
-        }
+        self._attr_device_info = _device_info(entry)
 
     @property
     def native_value(self):
-        """Return the current SWC output value."""
-        return self.coordinator.data.get("equipment", {}).get("swc_0", {}).get("swc")
+        return swc0(self.coordinator.data).get("swc")
 
     async def async_set_native_value(self, value):
-        """Set the SWC output value."""
-        await set_pool_value(self.hass, self._entry, "swc", int(value))
+        try:
+            await set_pool_value(self.hass, self._entry, "swc", int(value))
+        except Exception as err:
+            raise HomeAssistantError(f"SWC Output: {err}") from err
 
     @property
     def available(self):
-        """Return availability based on data fetch success."""
         return self.coordinator.data is not None and bool(self.coordinator.data)
 
 
@@ -208,26 +176,20 @@ class ExoPoolSwcLowOutputNumber(CoordinatorEntity, NumberEntity):
         self._entry = entry
         self._attr_name = "SWC Low Output"
         self._attr_unique_id = f"{entry.entry_id}_swc_low_output_set"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.entry_id)},
-            "name": "Exo Pool",
-            "manufacturer": "Zodiac",
-        }
+        self._attr_device_info = _device_info(entry)
 
     @property
     def native_value(self):
-        """Return the current SWC low output value."""
-        return (
-            self.coordinator.data.get("equipment", {}).get("swc_0", {}).get("swc_low")
-        )
+        return swc0(self.coordinator.data).get("swc_low")
 
     async def async_set_native_value(self, value):
-        """Set the SWC low output value."""
-        await set_pool_value(self.hass, self._entry, "swc_low", int(value))
+        try:
+            await set_pool_value(self.hass, self._entry, "swc_low", int(value))
+        except Exception as err:
+            raise HomeAssistantError(f"SWC Low Output: {err}") from err
 
     @property
     def available(self):
-        """Return availability based on data fetch success."""
         return self.coordinator.data is not None and bool(self.coordinator.data)
 
 
@@ -246,15 +208,10 @@ class ExoPoolRefreshIntervalNumber(CoordinatorEntity, NumberEntity):
         self._entry = entry
         self._attr_name = "Refresh Interval"
         self._attr_unique_id = f"{entry.entry_id}_refresh_interval"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.entry_id)},
-            "name": "Exo Pool",
-            "manufacturer": "Zodiac",
-        }
+        self._attr_device_info = _device_info(entry)
 
     @property
     def native_value(self):
-        """Return the current refresh interval in seconds."""
         interval = getattr(self.coordinator, "update_interval", None)
         if interval is None:
             return REFRESH_DEFAULT
@@ -264,5 +221,4 @@ class ExoPoolRefreshIntervalNumber(CoordinatorEntity, NumberEntity):
             return REFRESH_DEFAULT
 
     async def async_set_native_value(self, value):
-        """Set the refresh interval in seconds and update coordinator."""
         await async_set_refresh_interval(self.hass, self._entry, int(value))

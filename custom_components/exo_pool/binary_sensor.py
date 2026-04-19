@@ -12,9 +12,8 @@ from homeassistant.helpers.update_coordinator import (
 import logging
 from .api import (
     get_coordinator,
+    get_auth_state,
     ERROR_CODES,
-    _authentication_failed,
-    _last_auth_error,
     DOMAIN,
 )
 from homeassistant.const import EntityCategory
@@ -228,12 +227,14 @@ class AuthenticationStatusBinarySensor(CoordinatorEntity, BinarySensorEntity):
     @property
     def is_on(self):
         """Return true if authentication is successful."""
-        return not _authentication_failed
+        failed, _ = get_auth_state(self.hass, self._entry)
+        return not failed
 
     @property
     def extra_state_attributes(self):
         """Provide additional details about authentication status."""
-        return {"last_error": _last_auth_error} if _authentication_failed else {}
+        failed, last_error = get_auth_state(self.hass, self._entry)
+        return {"last_error": last_error} if failed else {}
 
     @property
     def available(self):

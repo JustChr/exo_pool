@@ -8,7 +8,6 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from homeassistant.helpers import aiohttp_client
 from datetime import timedelta
 import aiohttp
-import async_timeout
 import logging
 import time
 import asyncio
@@ -78,10 +77,6 @@ ERROR_CODES = {
     9: "ORP Stop",
 }
 
-# Class-level flag to track authentication status
-_authentication_failed = False
-_last_auth_error = None
-
 # Domain constant
 DOMAIN = "exo_pool"
 # User-configurable refresh interval (seconds)
@@ -108,6 +103,22 @@ IOT_ENDPOINT = "a1zi08qpbrtjyq-ats.iot.us-east-1.amazonaws.com"
 IOT_REGION = "us-east-1"
 MQTT_CREDENTIAL_REFRESH_BUFFER = 300  # refresh 5 min before expiry
 REST_FALLBACK_INTERVAL = 3600  # 1 hour REST poll - last resort when MQTT is dead
+
+
+def get_auth_state(hass: HomeAssistant, entry: ConfigEntry) -> tuple[bool, str | None]:
+    """Return (auth_failed, last_error) from the entry store."""
+    store = _get_entry_store(hass, entry)
+    return store.get("auth_failed", False), store.get("auth_last_error")
+
+
+def _set_auth_failed(store: dict, error_text: str) -> None:
+    store["auth_failed"] = True
+    store["auth_last_error"] = error_text
+
+
+def _clear_auth_state(store: dict) -> None:
+    store["auth_failed"] = False
+    store["auth_last_error"] = None
 
 
 async def _async_rate_limit(hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -358,7 +369,10 @@ class _WriteManager:
                 store = _get_entry_store(self._hass, self._entry)
                 store["write_in_flight"] = max(0, store.get("write_in_flight", 0) - 1)
 
-            await asyncio.sleep(WRITE_GAP_SECONDS)
+            store = _get_entry_store(self._hass, self._entry)
+            mqtt_client = store.get("mqtt_client")
+            if not (mqtt_client and mqtt_client.connected):
+                await asyncio.sleep(WRITE_GAP_SECONDS)
 
 
 def _get_write_manager(hass: HomeAssistant, entry: ConfigEntry) -> _WriteManager:
@@ -372,10 +386,8 @@ def _get_write_manager(hass: HomeAssistant, entry: ConfigEntry) -> _WriteManager
 
 async def async_update_data(hass: HomeAssistant, entry: ConfigEntry):
     """Fetch data from the Exo Pool API, handling token refresh."""
-    global _authentication_failed, _last_auth_error
-    _authentication_failed = False  # Reset flag
-    _last_auth_error = None
     store = _get_entry_store(hass, entry)
+    _clear_auth_state(store)
     no_read_until = store.get("no_read_until")
     if no_read_until and time.monotonic() < no_read_until:
         _schedule_debounced_refresh(hass, entry, delay=0.0)
@@ -411,7 +423,7 @@ async def async_update_data(hass: HomeAssistant, entry: ConfigEntry):
     # Refresh token if missing, expired, or about to expire
     if (
         not id_token
-        or _last_auth_error == '{"message":"The incoming token has expired"}'
+        or store.get("auth_last_error") == '{"message":"The incoming token has expired"}'
         or time.time() > expires_at
     ):
         _LOGGER.debug(
@@ -525,7 +537,7 @@ async def async_update_data(hass: HomeAssistant, entry: ConfigEntry):
 
             _LOGGER.error("Failed to fetch device data: %s", error_text)
             if "The incoming token has expired" in error_text:
-                _last_auth_error = error_text
+                store["auth_last_error"] = error_text
             raise UpdateFailed(f"Device data fetch failed: {error_text}")
         data = await response.json()
         _LOGGER.debug("Device data: %s", data)
@@ -572,9 +584,7 @@ async def _full_login(
         if response.status != 200:
             error_text = await response.text()
             _LOGGER.error("Failed to authenticate: %s", error_text)
-            global _authentication_failed, _last_auth_error
-            _authentication_failed = True
-            _last_auth_error = error_text
+            _set_auth_failed(_get_entry_store(hass, entry), error_text)
             raise Exception(f"Authentication failed: {error_text}")
         data = await response.json()
         _LOGGER.debug(
@@ -590,13 +600,11 @@ async def _full_login(
         )  # Default to 1 hour if not present
         if not id_token:
             _LOGGER.error("No userPoolOAuth.IdToken in response: %s", data)
-            _authentication_failed = True
-            _last_auth_error = "No userPoolOAuth.IdToken received"
+            _set_auth_failed(_get_entry_store(hass, entry), "No userPoolOAuth.IdToken received")
             raise Exception("No userPoolOAuth.IdToken received")
         if not auth_token:
             _LOGGER.error("No authentication_token in response: %s", data)
-            _authentication_failed = True
-            _last_auth_error = "No authentication_token received"
+            _set_auth_failed(_get_entry_store(hass, entry), "No authentication_token received")
             raise Exception("No authentication_token received")
         update_data = {
             **entry.data,
@@ -982,7 +990,8 @@ def _connect_mqtt(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     def _on_shadow_update(reported: dict) -> None:
         """Called on HA event loop when MQTT delivers a shadow update."""
-        coordinator.async_set_updated_data(reported)
+        merged = _merge_dict(coordinator.data or {}, reported)
+        coordinator.async_set_updated_data(merged)
 
     mqtt_client.set_shadow_callback(_on_shadow_update)
 

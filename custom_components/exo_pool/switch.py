@@ -4,7 +4,8 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from .api import get_coordinator, set_pool_value, DOMAIN
+from .api import get_coordinator, set_pool_value
+from .const import DOMAIN, device_info as _device_info
 import logging
 
 _LOGGER = logging.getLogger(__name__)
@@ -37,22 +38,12 @@ class _ExoSwitch(CoordinatorEntity, SwitchEntity):
     def __init__(self, entry: ConfigEntry, coordinator) -> None:
         super().__init__(coordinator)
         self._entry = entry
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.entry_id)},
-            "name": "Exo Pool",
-            "manufacturer": "Zodiac",
-            "model": "Exo",
-        }
+        self._attr_device_info = _device_info(entry)
 
     async def _apply(self, value: bool) -> None:
-        prev = self._attr_is_on
-        self._attr_is_on = value
-        self.async_write_ha_state()
         try:
             await set_pool_value(self.hass, self._entry, self._pool_setting, int(value))
         except Exception as err:
-            self._attr_is_on = prev
-            self.async_write_ha_state()
             raise HomeAssistantError(f"{self._attr_name}: {err}") from err
 
     async def async_turn_on(self, **kwargs) -> None:
