@@ -764,7 +764,7 @@ async def _execute_write(
     elif item.kind == "heating":
         desired = {"heating": {item.target: item.payload}}
     elif item.kind == "schedule":
-        desired = {"schedules": {item.target: item.payload}}
+        desired = {"schedules": item.payload}
     else:
         raise Exception(f"Unknown write kind: {item.kind}")
 
@@ -1209,9 +1209,63 @@ async def update_schedule(
     future = asyncio.get_running_loop().create_future()
     item = _WriteItem(
         kind="schedule",
-        key=f"schedule:{schedule_key}",
-        target=schedule_key,
-        payload=sched_patch,
+        key="schedule:batch",
+        target="",
+        payload={schedule_key: sched_patch},
+        futures=[future],
+        merge_func=_merge_dict,
+    )
+    await _get_write_manager(hass, entry).enqueue(item)
+    await future
+
+
+async def update_schedules(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    schedules: dict[str, dict],
+):
+    """Update multiple schedules in a single batched API call."""
+    id_token = entry.data.get("id_token")
+    if not id_token:
+        raise Exception("Unauthenticated")
+
+    batch_payload: dict = {}
+    coordinator = _get_entry_store(hass, entry).get("coordinator")
+
+    for schedule_key, params in schedules.items():
+        sched_patch: dict = {}
+        start = params.get("start")
+        end = params.get("end")
+        rpm = params.get("rpm")
+
+        if start is not None or end is not None:
+            timer: dict = {}
+            if start is not None:
+                timer["start"] = start
+            if end is not None:
+                timer["end"] = end
+            sched_patch["timer"] = timer
+        if rpm is not None:
+            try:
+                sched_patch["rpm"] = int(rpm)
+            except (TypeError, ValueError):
+                _LOGGER.warning("Invalid rpm value %s for schedule %s", rpm, schedule_key)
+
+        if sched_patch:
+            batch_payload[schedule_key] = sched_patch
+            if coordinator:
+                _apply_schedule_update(coordinator, schedule_key, sched_patch)
+
+    if not batch_payload:
+        _LOGGER.debug("No schedule updates to apply in batch")
+        return
+
+    future = asyncio.get_running_loop().create_future()
+    item = _WriteItem(
+        kind="schedule",
+        key="schedule:batch",
+        target="",
+        payload=batch_payload,
         futures=[future],
         merge_func=_merge_dict,
     )

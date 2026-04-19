@@ -45,6 +45,32 @@ set_schedule:
           max: 4000
           step: 50
 
+set_schedules:
+  name: Set schedules (batch)
+  description: Update multiple schedules in a single API call. All changes are sent together, triggering only one cooldown period.
+  fields:
+    device_id:
+      name: Device
+      description: Target Exo Pool device. Optional if you only have one entry.
+      required: false
+      selector:
+        device:
+          integration: exo_pool
+    schedules:
+      name: Schedules
+      description: List of schedule entries to update. Each entry must have a 'schedule' key (e.g. sch1) plus start, end, and optionally rpm (VSP only).
+      required: true
+      example: |
+        - schedule: sch1
+          start: "08:00"
+          end: "22:00"
+        - schedule: sch2
+          start: "10:00"
+          end: "20:00"
+          rpm: 2000
+      selector:
+        object:
+
 reload:
   name: Reload
   description: Reload the Exo Pool integration. If you only have one entry, no data is required.

@@ -236,6 +236,47 @@ def _register_services(hass: HomeAssistant) -> None:
             raise HomeAssistantError("Missing schedule key; select a schedule entity or provide schedule")
         await exo_api.update_schedule(hass, entry, schedule_key, start="00:00", end="00:00", rpm=None)
 
+    async def handle_set_schedules(call: ServiceCall) -> None:
+        device_id = call.data.get("device_id")
+        if device_id:
+            entry = _find_entry_from_device(hass, device_id)
+        else:
+            entries = hass.config_entries.async_entries(DOMAIN)
+            if len(entries) != 1:
+                raise HomeAssistantError("Select a device or provide device_id")
+            entry = entries[0]
+
+        if entry.state is not ConfigEntryState.LOADED:
+            raise HomeAssistantError("Config entry is not loaded")
+
+        coordinator = await exo_api.get_coordinator(hass, entry)
+        schedules_data = (coordinator.data or {}).get("schedules", {})
+
+        schedule_items = call.data.get("schedules", [])
+        if not schedule_items:
+            raise HomeAssistantError("No schedules provided")
+
+        batch: dict[str, dict] = {}
+        for item in schedule_items:
+            schedule_key = item.get("schedule")
+            if not schedule_key:
+                raise HomeAssistantError("Each entry must include a 'schedule' key (e.g. sch1)")
+            if schedule_key not in schedules_data:
+                raise HomeAssistantError(f"Unknown schedule: {schedule_key}")
+
+            start = _normalize_time(item.get("start"))
+            end = _normalize_time(item.get("end"))
+            rpm = item.get("rpm")
+
+            endpoint = (schedules_data.get(schedule_key) or {}).get("endpoint", "")
+            if not str(endpoint).lower().startswith("vsp"):
+                rpm = None
+
+            batch[schedule_key] = {"start": start, "end": end, "rpm": rpm}
+
+        await exo_api.update_schedules(hass, entry, batch)
+
     hass.services.async_register(DOMAIN, "reload", handle_reload)
     hass.services.async_register(DOMAIN, "set_schedule", handle_set_schedule)
+    hass.services.async_register(DOMAIN, "set_schedules", handle_set_schedules)
     hass.services.async_register(DOMAIN, "disable_schedule", handle_disable_schedule)

@@ -4,6 +4,11 @@ A custom integration to connect your Zodiac iAqualink **Exo** pool system to Hom
 
 ## 🆕 What’s New
 
+- **19 Apr 2026**
+1) New `exo_pool.set_schedules` service to update multiple schedules in a single API call.
+  1.1) All schedule changes are sent as one batch, triggering only one cooldown period instead of one per schedule.
+  1.2) Bulk schedule updates that previously took several minutes now complete in ~45 seconds.
+
 - **7 Feb 2026**
 1) Small retry fix to get around 401 'token expired' errors on schedule write attempts (and associated logging updates).
 
@@ -105,6 +110,30 @@ service: exo_pool.disable_schedule
 data:
   entity_id: binary_sensor.schedule_salt_water_chlorinator_2
 ```
+
+### `exo_pool.set_schedules`
+Update multiple schedules in a **single API call**. All changes are sent together, so only one cooldown period applies regardless of how many schedules you update.
+
+```yaml
+service: exo_pool.set_schedules
+data:
+  device_id: 1a2b3c4d5e6f7g8h9i0j
+  schedules:
+    - schedule: sch1
+      start: "08:00"
+      end: "22:00"
+    - schedule: sch2
+      start: "10:00"
+      end: "20:00"
+      rpm: 2000
+    - schedule: sch3
+      start: "00:00"
+      end: "00:00"
+```
+
+Each entry must include a `schedule` key (e.g. `sch1`). `start` and `end` are in HH:MM format. `rpm` is optional and only applies to VSP schedules. Setting `start` and `end` to `00:00` disables the schedule.
+
+If you only have one Exo Pool device, `device_id` can be omitted.
 
 ### `exo_pool.reload`
 Reload the integration. If you only have one Exo Pool entry, no data is required.
