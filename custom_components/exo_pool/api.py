@@ -585,6 +585,11 @@ def _connect_mqtt(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     def _on_shadow_update(reported: dict) -> None:
         """Called on HA event loop when MQTT delivers a shadow update."""
+        if _is_write_active(_get_entry_store(hass, entry)):
+            # A write just completed; the reported shadow still reflects the
+            # old state. Ignore this update — the optimistic state is correct
+            # and the next MQTT push (or debounced refresh) will confirm it.
+            return
         merged = _merge_dict(coordinator.data or {}, reported)
         coordinator.async_set_updated_data(merged)
 
