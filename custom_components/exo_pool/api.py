@@ -915,7 +915,7 @@ async def _async_refresh_and_reconnect(
         _LOGGER.warning("MQTT credential refresh and reconnect failed", exc_info=True)
 
 
-def _connect_mqtt(hass: HomeAssistant, entry: ConfigEntry) -> None:
+def _connect_mqtt(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Create and connect the MQTT client if AWS credentials are available.
 
     Runs in a background thread since awsiotsdk connect is blocking.
@@ -941,15 +941,15 @@ def _connect_mqtt(hass: HomeAssistant, entry: ConfigEntry) -> None:
             future.result(timeout=30)
         except Exception:
             _LOGGER.warning("Failed to obtain AWS credentials", exc_info=True)
-            return
+            return False
         credentials = store.get("aws_credentials")
         if not credentials:
             _LOGGER.debug("Still no AWS credentials after refresh - skipping MQTT")
-            return
+            return False
 
     coordinator = store.get("coordinator")
     if coordinator is None:
-        return
+        return False
 
     from .mqtt_client import ExoMqttClient
 
@@ -992,8 +992,12 @@ def _connect_mqtt(hass: HomeAssistant, entry: ConfigEntry) -> None:
             "MQTT connection failed - continuing with REST polling",
             exc_info=True,
         )
+        # Schedule credential refresh on the HA event loop (not from this worker thread)
+        hass.loop.call_soon_threadsafe(_schedule_credential_refresh, hass, entry)
+        return False
     # Schedule credential refresh on the HA event loop (not from this worker thread)
     hass.loop.call_soon_threadsafe(_schedule_credential_refresh, hass, entry)
+    return True
 
 
 def _schedule_credential_refresh(hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -1070,14 +1074,28 @@ async def get_coordinator(hass: HomeAssistant, entry: ConfigEntry):
             update_interval=timedelta(seconds=seconds),
         )
         store["coordinator"] = coordinator
-        # Initial data via REST - ensures entities have data immediately
-        try:
+        # Try MQTT first - avoids REST call and potential 429 on startup
+        mqtt_connected = await hass.async_add_executor_job(
+            _connect_mqtt, hass, entry
+        )
+        if mqtt_connected:
+            # MQTT connected and delivered initial shadow via get/accepted.
+            # Wait briefly for the shadow callback to populate coordinator.data.
+            for _ in range(20):
+                if coordinator.data:
+                    break
+                await asyncio.sleep(0.5)
+            if coordinator.data:
+                _LOGGER.info("Initial data loaded via MQTT - skipping REST fetch")
+            else:
+                _LOGGER.warning(
+                    "MQTT connected but no shadow data received - falling back to REST"
+                )
+                await coordinator.async_config_entry_first_refresh()
+        else:
+            # MQTT failed - fall back to REST for initial data
+            _LOGGER.info("MQTT not available - loading initial data via REST")
             await coordinator.async_config_entry_first_refresh()
-        except Exception as e:
-            _LOGGER.error("Initial data fetch failed: %s", e)
-            raise
-        # Start MQTT in background - REST continues as fallback
-        await hass.async_add_executor_job(_connect_mqtt, hass, entry)
     return store["coordinator"]
 
 
