@@ -314,7 +314,19 @@ class _WriteManager:
             try:
                 store = _get_entry_store(self._hass, self._entry)
                 store["write_in_flight"] = store.get("write_in_flight", 0) + 1
-                await _execute_write(self._hass, self._entry, item)
+                try:
+                    await _execute_write(self._hass, self._entry, item)
+                except Exception as first_err:
+                    if item.kind == "pool":
+                        _LOGGER.warning(
+                            "Pool write %s failed (%s), retrying in 3s",
+                            item.key,
+                            first_err,
+                        )
+                        await asyncio.sleep(3.0)
+                        await _execute_write(self._hass, self._entry, item)
+                    else:
+                        raise
             except Exception as err:
                 for future in item.futures:
                     if not future.done():
@@ -323,20 +335,25 @@ class _WriteManager:
                 for future in item.futures:
                     if not future.done():
                         future.set_result(None)
-                _set_cooldown(
-                    self._hass,
-                    self._entry,
-                    POST_WRITE_COOLDOWN_SECONDS + item.extra_delay,
-                    reason="post_write",
-                )
-                store = _get_entry_store(self._hass, self._entry)
-                store["write_quiet_until"] = (
-                    time.monotonic() + POST_WRITE_COOLDOWN_SECONDS
-                )
-                if item.kind == "schedule":
-                    _schedule_debounced_refresh(
-                        self._hass, self._entry, delay=SCHEDULE_REFRESH_DELAY
+                if item.kind == "pool":
+                    store = _get_entry_store(self._hass, self._entry)
+                    store["write_quiet_until"] = time.monotonic() + 5.0
+                    _schedule_debounced_refresh(self._hass, self._entry)
+                else:
+                    _set_cooldown(
+                        self._hass,
+                        self._entry,
+                        POST_WRITE_COOLDOWN_SECONDS + item.extra_delay,
+                        reason="post_write",
                     )
+                    store = _get_entry_store(self._hass, self._entry)
+                    store["write_quiet_until"] = (
+                        time.monotonic() + POST_WRITE_COOLDOWN_SECONDS
+                    )
+                    if item.kind == "schedule":
+                        _schedule_debounced_refresh(
+                            self._hass, self._entry, delay=SCHEDULE_REFRESH_DELAY
+                        )
             finally:
                 store = _get_entry_store(self._hass, self._entry)
                 store["write_in_flight"] = max(0, store.get("write_in_flight", 0) - 1)
@@ -1121,7 +1138,7 @@ async def async_set_refresh_interval(
     hass.config_entries.async_update_entry(entry, options=new_options)
 
 
-async def set_pool_value(hass, entry, setting, value, delay_refresh=False):
+async def set_pool_value(hass, entry, setting, value):
     """Set a pool setting value via the API."""
     id_token = entry.data.get("id_token")
     if not id_token:
@@ -1141,7 +1158,6 @@ async def set_pool_value(hass, entry, setting, value, delay_refresh=False):
         target=setting,
         payload=nested_value,
         futures=[future],
-        extra_delay=10.0 if delay_refresh else 0.0,
     )
     await _get_write_manager(hass, entry).enqueue(item)
     await future

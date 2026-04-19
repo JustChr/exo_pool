@@ -5,7 +5,11 @@ A custom integration to connect your Zodiac iAqualink **Exo** pool system to Hom
 ## 🆕 What’s New
 
 - **19 Apr 2026**
-1) New `exo_pool.set_schedules` service to update multiple schedules in a single API call.
+1) Switch toggles (Aux, Chlorinator, Power, etc.) no longer block the integration for 55 seconds after each change.
+  1.1) Switches now send immediately with no post-write cooldown.
+  1.2) On failure the switch reverts to its previous state and a Home Assistant error notification is shown.
+  1.3) A single automatic retry is attempted on transient network errors before reporting failure.
+2) New `exo_pool.set_schedules` service to update multiple schedules in a single API call.
   1.1) All schedule changes are sent as one batch, triggering only one cooldown period instead of one per schedule.
   1.2) Bulk schedule updates that previously took several minutes now complete in ~45 seconds.
 
