@@ -61,9 +61,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
 
     coordinator.async_add_listener(_update_on_refresh)
-
-    # Initial update
     _update_on_refresh()
+
+    async def _async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
+        await exo_api.async_set_refresh_interval(
+            hass, entry, entry.options.get(exo_api.REFRESH_OPTION_KEY, exo_api.REFRESH_DEFAULT)
+        )
+
+    entry.async_on_unload(entry.add_update_listener(_async_options_updated))
 
     # Forward setup to sensor, binary_sensor, switch, number, button, and climate platforms
     try:
@@ -234,6 +239,10 @@ def _register_services(hass: HomeAssistant) -> None:
         entry, schedule_key = _resolve_target(hass, call)
         if not schedule_key:
             raise HomeAssistantError("Missing schedule key; select a schedule entity or provide schedule")
+        coordinator: DataUpdateCoordinator = await get_coordinator(hass, entry)
+        schedules = (coordinator.data or {}).get("schedules", {})
+        if schedule_key not in schedules:
+            raise HomeAssistantError(f"Unknown schedule: {schedule_key}")
         await exo_api.update_schedule(hass, entry, schedule_key, start="00:00", end="00:00", rpm=None)
 
     async def handle_set_schedules(call: ServiceCall) -> None:

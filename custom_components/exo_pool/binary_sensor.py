@@ -13,9 +13,11 @@ import logging
 from .api import (
     get_coordinator,
     get_auth_state,
+    get_mqtt_connected,
     ERROR_CODES,
     DOMAIN,
 )
+from .const import device_info as _device_info, swc0
 from homeassistant.const import EntityCategory
 
 _LOGGER = logging.getLogger(__name__)
@@ -25,10 +27,8 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     """Set up the binary sensor platform for Exo Pool."""
-    # Retrieve shared coordinator
     coordinator = await get_coordinator(hass, entry)
 
-    # Add binary sensors
     entities = [
         FilterPumpBinarySensor(entry, coordinator),
         ErrorStateBinarySensor(entry, coordinator),
@@ -38,7 +38,6 @@ async def async_setup_entry(
         AwsConnectivityBinarySensor(entry, coordinator),
     ]
 
-    # Add a binary sensor per schedule item
     created_schedule_keys: set[str] = set()
     schedules = coordinator.data.get("schedules", {}) if coordinator.data else {}
 
@@ -46,10 +45,8 @@ async def async_setup_entry(
         for key, sched in schedules_dict.items():
             if not isinstance(sched, dict):
                 continue
-            # Filter out meta keys like supported/programmed
             if key in {"supported", "programmed"}:
                 continue
-            # Must have at least an id or endpoint to be meaningful
             if not (sched.get("id") or sched.get("endpoint")):
                 continue
             yield key, sched
@@ -60,7 +57,6 @@ async def async_setup_entry(
 
     async_add_entities(entities)
 
-    # Discover any new schedules that appear after initial setup
     def _check_new_schedules():
         new_entities: list[BinarySensorEntity] = []
         current = coordinator.data.get("schedules", {}) if coordinator.data else {}
@@ -76,7 +72,6 @@ async def async_setup_entry(
     coordinator.async_add_listener(_check_new_schedules)
 
 
-# Binary Sensor Classes
 class FilterPumpBinarySensor(CoordinatorEntity, BinarySensorEntity):
     """Representation of a filter pump binary sensor."""
 
@@ -88,26 +83,15 @@ class FilterPumpBinarySensor(CoordinatorEntity, BinarySensorEntity):
         self._entry = entry
         self._attr_name = "Filter Pump"
         self._attr_unique_id = f"{entry.entry_id}_filter_pump"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.entry_id)},
-            "name": "Exo Pool",
-            "manufacturer": "Zodiac",
-            "model": "Exo",
-        }
+        self._attr_device_info = _device_info(entry)
 
     @property
     def is_on(self):
-        return bool(
-            self.coordinator.data.get("equipment", {})
-            .get("swc_0", {})
-            .get("filter_pump", {})
-            .get("state")
-        )
+        return bool(swc0(self.coordinator.data).get("filter_pump", {}).get("state"))
 
     @property
     def extra_state_attributes(self):
-        """Provide additional filter pump attributes."""
-        schedules = self.coordinator.data.get("schedules", {})
+        schedules = self.coordinator.data.get("schedules", {}) if self.coordinator.data else {}
         for key, value in schedules.items():
             if (
                 isinstance(value, dict)
@@ -117,11 +101,10 @@ class FilterPumpBinarySensor(CoordinatorEntity, BinarySensorEntity):
                 and value.get("active") == 1
             ):
                 return {"speed_rpm": value.get("rpm")}
-        return {"speed_rpm": 0}  # Default to 0 if no active VSP schedule
+        return {"speed_rpm": 0}
 
     @property
     def available(self):
-        """Return availability based on data fetch success."""
         return self.coordinator.data is not None
 
 
@@ -135,31 +118,17 @@ class ErrorStateBinarySensor(CoordinatorEntity, BinarySensorEntity):
     def __init__(self, entry: ConfigEntry, coordinator: DataUpdateCoordinator):
         super().__init__(coordinator)
         self._entry = entry
-        self._attr_name = "Error State"
+        self._attr_name = "Error"
         self._attr_unique_id = f"{entry.entry_id}_error_state"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.entry_id)},
-            "name": "Exo Pool",
-            "manufacturer": "Zodiac",
-            "model": "Exo",
-        }
+        self._attr_device_info = _device_info(entry)
 
     @property
     def is_on(self):
-        return bool(
-            self.coordinator.data.get("equipment", {})
-            .get("swc_0", {})
-            .get("error_state")
-        )
+        return bool(swc0(self.coordinator.data).get("error_state"))
 
     @property
     def extra_state_attributes(self):
-        """Provide error code and message as attributes."""
-        code = (
-            self.coordinator.data.get("equipment", {})
-            .get("swc_0", {})
-            .get("error_code")
-        )
+        code = swc0(self.coordinator.data).get("error_code")
         return {
             "error_code": code,
             "error_message": ERROR_CODES.get(
@@ -169,7 +138,6 @@ class ErrorStateBinarySensor(CoordinatorEntity, BinarySensorEntity):
 
     @property
     def available(self):
-        """Return availability based on data fetch success."""
         return self.coordinator.data is not None
 
 
@@ -182,26 +150,16 @@ class SaltWaterChlorinatorBinarySensor(CoordinatorEntity, BinarySensorEntity):
     def __init__(self, entry: ConfigEntry, coordinator: DataUpdateCoordinator):
         super().__init__(coordinator)
         self._entry = entry
-        self._attr_name = "Salt Water Chlorinator"
+        self._attr_name = "Chlorinator"
         self._attr_unique_id = f"{entry.entry_id}_salt_water_chlorinator"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.entry_id)},
-            "name": "Exo Pool",
-            "manufacturer": "Zodiac",
-            "model": "Exo",
-        }
+        self._attr_device_info = _device_info(entry)
 
     @property
     def is_on(self):
-        return bool(
-            self.coordinator.data.get("equipment", {})
-            .get("swc_0", {})
-            .get("production")
-        )
+        return bool(swc0(self.coordinator.data).get("production"))
 
     @property
     def available(self):
-        """Return availability based on data fetch success."""
         return self.coordinator.data is not None
 
 
@@ -215,35 +173,27 @@ class AuthenticationStatusBinarySensor(CoordinatorEntity, BinarySensorEntity):
     def __init__(self, entry: ConfigEntry, coordinator: DataUpdateCoordinator):
         super().__init__(coordinator)
         self._entry = entry
-        self._attr_name = "Authentication Status"
+        self._attr_name = "Authentication"
         self._attr_unique_id = f"{entry.entry_id}_authentication_status"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.entry_id)},
-            "name": "Exo Pool",
-            "manufacturer": "Zodiac",
-            "model": "Exo",
-        }
+        self._attr_device_info = _device_info(entry)
 
     @property
     def is_on(self):
-        """Return true if authentication is successful."""
         failed, _ = get_auth_state(self.hass, self._entry)
         return not failed
 
     @property
     def extra_state_attributes(self):
-        """Provide additional details about authentication status."""
         failed, last_error = get_auth_state(self.hass, self._entry)
         return {"last_error": last_error} if failed else {}
 
     @property
     def available(self):
-        """Return availability based on data fetch success."""
-        return self.coordinator.data is not None
+        return True
 
 
 class ConnectedBinarySensor(CoordinatorEntity, BinarySensorEntity):
-    """Representation of a connected binary sensor."""
+    """Binary sensor indicating whether the MQTT client is connected to AWS IoT."""
 
     _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
     _attr_icon = "mdi:signal"
@@ -252,31 +202,21 @@ class ConnectedBinarySensor(CoordinatorEntity, BinarySensorEntity):
     def __init__(self, entry: ConfigEntry, coordinator: DataUpdateCoordinator):
         super().__init__(coordinator)
         self._entry = entry
-        self._attr_name = "Connected"
+        self._attr_name = "MQTT Connected"
         self._attr_unique_id = f"{entry.entry_id}_connected"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.entry_id)},
-            "name": "Exo Pool",
-            "manufacturer": "Zodiac",
-            "model": "Exo",
-        }
+        self._attr_device_info = _device_info(entry)
 
     @property
     def is_on(self):
-        return self.coordinator.data is not None and bool(self.coordinator.data)
+        return get_mqtt_connected(self.hass, self._entry)
 
     @property
     def available(self):
-        """Return availability based on data fetch success."""
-        _LOGGER.debug(
-            "Connected sensor availability check: coordinator.data=%s",
-            self.coordinator.data is not None,
-        )
-        return self.coordinator.data is not None
+        return True
 
 
 class AwsConnectivityBinarySensor(CoordinatorEntity, BinarySensorEntity):
-    """Representation of AWS connectivity status."""
+    """Binary sensor indicating whether the pool device is online."""
 
     _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
     _attr_icon = "mdi:cloud-check"
@@ -285,14 +225,9 @@ class AwsConnectivityBinarySensor(CoordinatorEntity, BinarySensorEntity):
     def __init__(self, entry: ConfigEntry, coordinator: DataUpdateCoordinator):
         super().__init__(coordinator)
         self._entry = entry
-        self._attr_name = "AWS Status"
+        self._attr_name = "Device Online"
         self._attr_unique_id = f"{entry.entry_id}_aws_connection"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.entry_id)},
-            "name": "Exo Pool",
-            "manufacturer": "Zodiac",
-            "model": "Exo",
-        }
+        self._attr_device_info = _device_info(entry)
 
     @property
     def is_on(self) -> bool | None:
@@ -308,7 +243,6 @@ class AwsConnectivityBinarySensor(CoordinatorEntity, BinarySensorEntity):
 
     @property
     def available(self):
-        """Return availability based on data fetch success."""
         return self.coordinator.data is not None
 
 
@@ -323,12 +257,7 @@ class ScheduleBinarySensor(CoordinatorEntity, BinarySensorEntity):
         name = (sched or {}).get("name") or (sched or {}).get("id") or schedule_key
         self._attr_name = f"Schedule: {name}"
         self._attr_unique_id = f"{entry.entry_id}_schedule_{schedule_key}"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.entry_id)},
-            "name": "Exo Pool",
-            "manufacturer": "Zodiac",
-            "model": "Exo",
-        }
+        self._attr_device_info = _device_info(entry)
 
     @property
     def _schedule(self):
@@ -378,7 +307,6 @@ class ScheduleBinarySensor(CoordinatorEntity, BinarySensorEntity):
 
     @property
     def icon(self) -> str | None:
-        """Return an icon representing the schedule type and state."""
         typ = self._endpoint_type((self._schedule or {}).get("endpoint"))
         on = bool(self.is_on)
         if typ == "vsp":
@@ -387,5 +315,4 @@ class ScheduleBinarySensor(CoordinatorEntity, BinarySensorEntity):
             return "mdi:water-plus" if on else "mdi:water-off"
         if typ == "aux":
             return "mdi:toggle-switch" if on else "mdi:toggle-switch-off-outline"
-        # Fallback to calendar icons for unknown types
         return "mdi:calendar-check" if on else "mdi:calendar-remove"

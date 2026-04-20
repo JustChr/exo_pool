@@ -6,6 +6,7 @@ from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import aiohttp_client
 
 from .const import DOMAIN
+from .api import REFRESH_OPTION_KEY, REFRESH_DEFAULT, REFRESH_MIN, REFRESH_MAX
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -21,10 +22,29 @@ API_KEY_PROD = "EOOEMOW4YR6QNB11"
 API_KEY_R = "EOOEMOW4YR6QNB07"
 
 
+class ExoPoolOptionsFlow(config_entries.OptionsFlow):
+    """Options flow for Exo Pool (REST poll interval)."""
+
+    async def async_step_init(self, user_input=None) -> FlowResult:
+        if user_input is not None:
+            return self.async_create_entry(data=user_input)
+        current = self.config_entry.options.get(REFRESH_OPTION_KEY, REFRESH_DEFAULT)
+        schema = vol.Schema({
+            vol.Optional(REFRESH_OPTION_KEY, default=int(current)): vol.All(
+                vol.Coerce(int), vol.Range(min=REFRESH_MIN, max=REFRESH_MAX)
+            )
+        })
+        return self.async_show_form(step_id="init", data_schema=schema)
+
+
 class ExoPoolConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Exo Pool."""
 
     VERSION = 1
+
+    @staticmethod
+    def async_get_options_flow(config_entry):
+        return ExoPoolOptionsFlow()
 
     def __init__(self):
         self.email = None

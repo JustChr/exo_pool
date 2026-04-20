@@ -7,7 +7,7 @@ import logging
 from homeassistant.const import EntityCategory
 
 from .api import get_coordinator, async_request_refresh
-from .const import DOMAIN
+from .const import device_info as _device_info
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -29,14 +29,9 @@ class ExoPoolRefreshButton(CoordinatorEntity, ButtonEntity):
     def __init__(self, entry: ConfigEntry, coordinator: DataUpdateCoordinator):
         super().__init__(coordinator)
         self._entry = entry
-        self._attr_name = "Refresh data"
+        self._attr_name = "Refresh"
         self._attr_unique_id = f"{entry.entry_id}_refresh_data"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.entry_id)},
-            "name": "Exo Pool",
-            "manufacturer": "Zodiac",
-            "model": "Exo",
-        }
+        self._attr_device_info = _device_info(entry)
 
     async def async_press(self) -> None:
         """Handle the button press."""

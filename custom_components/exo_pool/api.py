@@ -118,6 +118,13 @@ def get_auth_state(hass: HomeAssistant, entry: ConfigEntry) -> tuple[bool, str |
     return store.get("auth_failed", False), store.get("auth_last_error")
 
 
+def get_mqtt_connected(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Return True if the MQTT client is currently connected."""
+    store = _get_entry_store(hass, entry)
+    mqtt_client = store.get("mqtt_client")
+    return bool(mqtt_client and mqtt_client.connected)
+
+
 def _set_auth_failed(store: dict, error_text: str) -> None:
     store["auth_failed"] = True
     store["auth_last_error"] = error_text

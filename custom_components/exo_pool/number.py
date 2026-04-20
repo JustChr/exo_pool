@@ -4,15 +4,8 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from homeassistant.const import PERCENTAGE, UnitOfTime
-from .api import (
-    get_coordinator,
-    set_pool_value,
-    async_set_refresh_interval,
-    REFRESH_MIN,
-    REFRESH_MAX,
-    REFRESH_DEFAULT,
-)
+from homeassistant.const import PERCENTAGE
+from .api import get_coordinator, set_pool_value
 from .const import DOMAIN, device_info as _device_info, swc0
 import logging
 
@@ -31,7 +24,6 @@ async def async_setup_entry(
         return hw.get("ph_only", 0) == 1, hw.get("dual_link", 0) == 1
 
     entities: list[NumberEntity] = [
-        ExoPoolRefreshIntervalNumber(entry, coordinator),
         ExoPoolSwcOutputNumber(entry, coordinator),
         ExoPoolSwcLowOutputNumber(entry, coordinator),
     ]
@@ -142,7 +134,7 @@ class ExoPoolSwcOutputNumber(CoordinatorEntity, NumberEntity):
     def __init__(self, entry: ConfigEntry, coordinator):
         super().__init__(coordinator)
         self._entry = entry
-        self._attr_name = "SWC Output"
+        self._attr_name = "Chlorinator Output"
         self._attr_unique_id = f"{entry.entry_id}_swc_output_set"
         self._attr_device_info = _device_info(entry)
 
@@ -174,7 +166,7 @@ class ExoPoolSwcLowOutputNumber(CoordinatorEntity, NumberEntity):
     def __init__(self, entry: ConfigEntry, coordinator):
         super().__init__(coordinator)
         self._entry = entry
-        self._attr_name = "SWC Low Output"
+        self._attr_name = "Chlorinator Low Output"
         self._attr_unique_id = f"{entry.entry_id}_swc_low_output_set"
         self._attr_device_info = _device_info(entry)
 
@@ -193,32 +185,3 @@ class ExoPoolSwcLowOutputNumber(CoordinatorEntity, NumberEntity):
         return self.coordinator.data is not None and bool(self.coordinator.data)
 
 
-class ExoPoolRefreshIntervalNumber(CoordinatorEntity, NumberEntity):
-    """Number to control the data refresh interval in seconds."""
-
-    _attr_icon = "mdi:update"
-    _attr_mode = "box"
-    _attr_native_step = 1
-    _attr_native_min_value = REFRESH_MIN
-    _attr_native_max_value = REFRESH_MAX
-    _attr_native_unit_of_measurement = UnitOfTime.SECONDS
-
-    def __init__(self, entry: ConfigEntry, coordinator):
-        super().__init__(coordinator)
-        self._entry = entry
-        self._attr_name = "Refresh Interval"
-        self._attr_unique_id = f"{entry.entry_id}_refresh_interval"
-        self._attr_device_info = _device_info(entry)
-
-    @property
-    def native_value(self):
-        interval = getattr(self.coordinator, "update_interval", None)
-        if interval is None:
-            return REFRESH_DEFAULT
-        try:
-            return int(interval.total_seconds())
-        except Exception:
-            return REFRESH_DEFAULT
-
-    async def async_set_native_value(self, value):
-        await async_set_refresh_interval(self.hass, self._entry, int(value))

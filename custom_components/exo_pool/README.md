@@ -7,6 +7,14 @@ Real-time state sync via AWS IoT MQTT (same protocol as the official app) — no
 
 ## What's New
 
+### 20 Apr 2026 – v0.1.21
+
+- **Entity cleanup** – Removed redundant sensors (SWC Output %, SWC Low Output %, Error Code Text) and the Power switch (cannot be controlled via API). Renamed entities for consistency: "Salt Water Chlorinator" → "Chlorinator", "Error State" → "Error", "Authentication Status" → "Authentication", "Connected" → "MQTT Connected", "AWS Status" → "Device Online", "SWC Output" → "Chlorinator Output", "SWC Low Output" → "Chlorinator Low Output", "SWC Low Mode" → "Chlorinator Low Mode".
+- **Aux 2 switch** now hides automatically when Aux 2 is configured as a heat pump (climate entity takes over).
+- **Refresh Interval** moved from a number entity to the integration's Configure dialog (Settings → Devices & Services → Exo Pool → Configure).
+- **MQTT Connected** sensor now reflects the actual MQTT client state rather than data presence.
+- **Authentication** sensor is always available (was incorrectly unavailable when data was missing).
+
 ### 19 Apr 2026 – v0.1.20
 
 - **State bounce fix** – After sending a command via MQTT (e.g. turning off the chlorinator), the UI no longer flips back to the old state. AWS IoT echoes back an intermediate shadow update before the device processes the command; that stale update is now ignored during the 5-second post-write settling window.
@@ -65,16 +73,16 @@ Real-time state sync via AWS IoT MQTT (same protocol as the official app) — no
 
 | Category | Entities |
 |---|---|
-| **Sensors** | Water temperature, pH, ORP, SWC output %, SWC low output %, error code, error text, Wi-Fi RSSI, hardware info |
-| **Binary sensors** | Filter pump, chlorinator, error state, auth status, AWS connected, one sensor per schedule |
-| **Switches** | ORP boost, power, chlorinator production, Aux 1, Aux 2, SWC low mode |
-| **Numbers** | SWC output, SWC low output, refresh interval; pH / ORP set points when hardware supports them |
+| **Sensors** | Water temperature, pH, ORP, error code, Wi-Fi RSSI, hardware info |
+| **Binary sensors** | Filter pump, chlorinator, error, authentication, MQTT connected, device online, one sensor per schedule |
+| **Switches** | ORP boost, chlorinator, Aux 1, Aux 2 (hidden when heat pump active), chlorinator low mode |
+| **Numbers** | Chlorinator output, chlorinator low output; pH / ORP set points when hardware supports them |
 | **Climate** | Heat pump control (appears automatically when Aux 2 is in heat mode) |
 | **Services** | `set_schedule`, `set_schedules`, `disable_schedule`, `reload` |
 
 **Real-time updates** via AWS IoT MQTT — same protocol as the official app. No MQTT broker or addon required.
 
-**Configurable REST fallback** – the `Refresh Interval` number entity (300–3600 s) controls the fallback poll rate. Under normal MQTT operation this rarely fires.
+**Configurable REST fallback** – the REST poll interval (300–3600 s) is configured via **Settings → Devices & Services → Exo Pool → Configure**. Under normal MQTT operation this rarely fires.
 
 ---
 

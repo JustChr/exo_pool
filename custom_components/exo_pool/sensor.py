@@ -9,7 +9,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .api import get_coordinator, ERROR_CODES
 from .const import DOMAIN, FILTER_PUMP_TYPE_MAP, device_info as _device_info, swc0
-from homeassistant.const import EntityCategory, PERCENTAGE
+from homeassistant.const import EntityCategory
 import logging
 
 _LOGGER = logging.getLogger(__name__)
@@ -27,10 +27,7 @@ async def async_setup_entry(
         TempSensor(entry, coordinator),
         ORPSensor(entry, coordinator),
         PHSensor(entry, coordinator),
-        SWCOutputSensor(entry, coordinator),
-        SWCLowOutputSensor(entry, coordinator),
         ErrorCodeSensor(entry, coordinator),
-        ErrorCodeTextSensor(entry, coordinator),
         WifiRssiSensor(entry, coordinator),
         HardwareSensor(entry, coordinator),
     ]
@@ -106,44 +103,6 @@ class PHSensor(CoordinatorEntity, SensorEntity):
         return {"set_point": set_point / 10 if set_point is not None else None}
 
 
-class SWCOutputSensor(CoordinatorEntity, SensorEntity):
-    """Representation of a SWC output sensor."""
-
-    _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_native_unit_of_measurement = PERCENTAGE
-    _attr_icon = "mdi:water-percent"
-
-    def __init__(self, entry: ConfigEntry, coordinator):
-        super().__init__(coordinator)
-        self._entry = entry
-        self._attr_name = "SWC Output"
-        self._attr_unique_id = f"{entry.entry_id}_swc_output"
-        self._attr_device_info = _device_info(entry)
-
-    @property
-    def native_value(self):
-        return swc0(self.coordinator.data).get("swc")
-
-
-class SWCLowOutputSensor(CoordinatorEntity, SensorEntity):
-    """Representation of a SWC low output sensor."""
-
-    _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_native_unit_of_measurement = PERCENTAGE
-    _attr_icon = "mdi:water-percent"
-
-    def __init__(self, entry: ConfigEntry, coordinator):
-        super().__init__(coordinator)
-        self._entry = entry
-        self._attr_name = "SWC Low Output"
-        self._attr_unique_id = f"{entry.entry_id}_swc_low_output"
-        self._attr_device_info = _device_info(entry)
-
-    @property
-    def native_value(self):
-        return swc0(self.coordinator.data).get("swc_low")
-
-
 class ErrorCodeSensor(CoordinatorEntity, SensorEntity):
     """Representation of an error code sensor."""
 
@@ -170,26 +129,6 @@ class ErrorCodeSensor(CoordinatorEntity, SensorEntity):
                 int(code) if code is not None else 0, "Unknown Error"
             )
         }
-
-
-class ErrorCodeTextSensor(CoordinatorEntity, SensorEntity):
-    """Representation of an error code text sensor."""
-
-    _attr_icon = "mdi:alert-circle-outline"
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
-
-    def __init__(self, entry: ConfigEntry, coordinator):
-        super().__init__(coordinator)
-        self._entry = entry
-        self._attr_name = "Error Code Text"
-        self._attr_unique_id = f"{entry.entry_id}_error_code_text"
-        self._attr_device_info = _device_info(entry)
-
-    @property
-    def native_value(self):
-        """Return the error message text."""
-        code = swc0(self.coordinator.data).get("error_code")
-        return ERROR_CODES.get(int(code) if code is not None else 0, "No Error")
 
 
 class WifiRssiSensor(CoordinatorEntity, SensorEntity):
