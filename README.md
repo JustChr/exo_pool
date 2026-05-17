@@ -1,127 +1,131 @@
 # Exo Pool – Home Assistant Integration
 
-A custom integration to connect your Zodiac iAqualink **Exo** pool system to Home Assistant.
-Real-time state sync via AWS IoT MQTT (same protocol as the official app) — no MQTT broker or addon required.
+[![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz)
+[![GitHub Release](https://img.shields.io/github/release/JustChr/exo_pool.svg)](https://github.com/JustChr/exo_pool/releases)
+[![License](https://img.shields.io/github/license/JustChr/exo_pool.svg)](LICENSE)
+
+Control and monitor your **Zodiac iAqualink Exo** pool system directly from Home Assistant — real-time updates via the same cloud connection as the official app. No extra hardware, no MQTT broker, no addon required.
 
 ---
 
-## What's New
+## Compatibility
 
-### 20 Apr 2026 – v0.1.21
+**Supported devices:** Zodiac iAqualink **Exo** series (European market).
 
-- **Entity cleanup** – Removed redundant sensors (SWC Output %, SWC Low Output %, Error Code Text) and the Power switch. Renamed entities for consistency: "Chlorinator", "Chlorinator Output/Low Output/Low Mode", "Error", "Authentication", "MQTT Connected", "Device Online".
-- **Aux 2 switch** hides automatically when Aux 2 is in heat pump mode (climate entity takes over).
-- **Refresh Interval** moved to the integration's Configure dialog (no longer a number entity in the dashboard).
-- **MQTT Connected** sensor now shows the actual MQTT client connection state.
+> Not compatible with other iAqualink hardware (e.g. iQ20, iAqualink 3.0). Use the built-in [iAqualink integration](https://www.home-assistant.io/integrations/iaqualink/) for those.
 
-### 19 Apr 2026 – v0.1.20
+Confirmed working:
 
-- **State bounce fix** – After sending a command via MQTT (e.g. turning off the chlorinator), the UI no longer flips back to the old state. AWS IoT echoes back an intermediate shadow update before the device processes the command; that stale update is now ignored during the 5-second post-write settling window.
+- **Exo IQ LS** (dual-link ORP & pH, Zodiac VSP pump)
 
-### 19 Apr 2026 – v0.1.19
-
-- **Instant switches** – Aux, Chlorinator, Power and all other switches now toggle immediately with no post-write cooldown. On failure a HA error notification is shown and a single automatic retry is attempted.
-- **Batch schedule updates** – New `exo_pool.set_schedules` service sends all schedule changes in one API call, triggering only one cooldown period. Bulk updates that previously took several minutes now complete in ~45 seconds.
-- **Code cleanup** – `api.py` split into `write_manager.py`, `coordinator.py`, and `auth.py` for cleaner structure and easier testing.
-
-### 15 Apr 2026 – v0.1.18
-
-- **Real-time MQTT push** – connects to the same AWS IoT shadow endpoint as the official iAqualink app. Sub-second state sync with no extra setup; credentials come from the Zodiac login API automatically.
-- Writes (set points, switches, schedules) go via MQTT when connected — no 429 rate limit errors under normal conditions.
-- REST polling kept as a 1-hour fallback if MQTT disconnects.
-- AWS credentials refreshed automatically before expiry.
-- Added `awsiotsdk` dependency (installed automatically by HACS).
-
-### 7 Feb 2026
-
-- Fixed 401 "token expired" errors that could occur on schedule writes; improved related logging.
-
-### 6 Feb 2026
-
-- Much better protection against cloud rate-limits — API calls are spaced out and reads/writes no longer overlap.
-- Write queue: multiple quick changes are merged and applied safely instead of hammering the cloud API.
-- New manual refresh service; pH, ORP and other optional entities now appear reliably without restart.
-
-### 11 Jan 2026
-
-- Default REST poll interval set to 10 minutes; temporarily boosted to 10 s for 60 s after a user change.
-- SWC sensors corrected; SWC low mode now uses the correct `low` shadow field.
-- Added `exo_pool.reload` service.
-
-### Earlier
-
-- **20 Oct 2025** – Single-speed pump (SSP) support.
-- **23 Sep 2025** – Experimental climate entity for heat pump (Aux 2 heat mode).
-- **15 Sep 2025** – Configurable API refresh rate.
-- **3 Sep 2025** – Schedule binary sensors and set-schedule service.
+Have success with another model? [Open a discussion!](https://github.com/JustChr/exo_pool/discussions)
 
 ---
 
-## Installation (via HACS)
+## Installation
 
-> This is a community fork. Add it as a **custom repository** in HACS first.
+> **Requires [HACS](https://hacs.xyz).** Add this as a custom repository first.
 
-1. In Home Assistant open **HACS → Integrations → ⋮ → Custom repositories**.
-2. Add `https://github.com/JustChr/exo_pool` with category **Integration**.
-3. Search for **Exo Pool** and click **Download**.
-4. Restart Home Assistant.
-5. Go to **Settings → Devices & Services → Add Integration**, search for **Exo Pool**, and follow the prompts.
+1. In Home Assistant open **HACS → Integrations → ⋮ → Custom repositories**
+2. Add `https://github.com/JustChr/exo_pool` with category **Integration**
+3. Search for **Exo Pool** and click **Download**
+4. Restart Home Assistant
+5. Go to **Settings → Devices & Services → Add Integration**, search for **Exo Pool**, and enter your Zodiac iAqualink credentials
 
 ---
 
-## Features
+## What you get
 
-| Category | Entities |
+### Monitor
+
+| Entity | What it shows |
 |---|---|
-| **Sensors** | Water temperature, pH, ORP, error code, Wi-Fi RSSI, hardware info |
-| **Binary sensors** | Filter pump, chlorinator, error, authentication, MQTT connected, device online, one sensor per schedule |
-| **Switches** | ORP boost, chlorinator, Aux 1, Aux 2 (hidden when heat pump active), chlorinator low mode |
-| **Numbers** | Chlorinator output, chlorinator low output; pH / ORP set points when hardware supports them |
-| **Climate** | Heat pump control (appears automatically when Aux 2 is in heat mode) |
-| **Services** | `set_schedule`, `set_schedules`, `disable_schedule`, `reload` |
+| Water Temperature | Current pool water temperature |
+| pH | Current pH value |
+| ORP | Oxidation-reduction potential (water sanitation level) |
+| Error Code | Active error code from the device |
+| Wi-Fi RSSI | Signal strength of the device's Wi-Fi connection |
+| Hardware Info | Detected hardware capabilities (pump type, ORP/pH module) |
+| Filter Pump | Whether the filter pump is currently running |
+| Chlorinator | Whether the salt water chlorinator is currently producing |
+| Error | Whether the device has an active error |
+| MQTT Connected | Whether the integration's real-time connection to Zodiac's cloud is active |
+| Device Online | Whether the pool device itself is reachable in the cloud |
+| Authentication | Whether your credentials are valid |
+| Schedule sensors | One sensor per pump/chlorinator schedule (active, start/end times, type) |
 
-**Real-time updates** via AWS IoT MQTT — same protocol as the official app. No MQTT broker or addon required.
+### Control
 
-**Configurable REST fallback** – the REST poll interval (300–3600 s) is configured via **Settings → Devices & Services → Exo Pool → Configure**. Under normal MQTT operation this rarely fires.
+| Entity | What it controls |
+|---|---|
+| Chlorinator switch | Enable/disable chlorine production |
+| Chlorinator Output | Target output level (0–100 %) |
+| Chlorinator Low Mode | Enable reduced-output mode (e.g. for night/off-peak) |
+| Chlorinator Low Output | Target output level in low mode |
+| ORP Boost | Temporarily boost chlorine production |
+| Aux 1 / Aux 2 | Auxiliary relay outputs (e.g. lighting, heating valve) |
+| pH Set Point | Target pH value (when pH module is present) |
+| ORP Set Point | Target ORP value (when ORP module is present) |
+| Climate (heat pump) | Heat pump target temperature and mode (appears automatically when Aux 2 is in heat mode) |
+| Refresh button | Force an immediate data refresh |
 
 ---
 
-## Schedule Services
+## Configuration
 
-Each schedule is exposed as a binary sensor with attributes: `schedule`, `enabled`, `start_time`, `end_time`, `type` (`vsp` | `swc` | `aux`), and `rpm` (VSP only).
+After installation, the integration connects automatically using your Zodiac credentials. No manual MQTT or API setup is required.
 
-### `exo_pool.set_schedule`
+**REST poll interval** (fallback when the real-time connection is unavailable):
+Go to **Settings → Devices & Services → Exo Pool → Configure** and set the interval (300–3600 seconds). Under normal operation this rarely fires.
 
-Update a single schedule:
+---
+
+## Schedules
+
+Each schedule on the device is exposed as a binary sensor with these attributes:
+
+| Attribute | Description |
+|---|---|
+| `schedule` | Schedule key (e.g. `sch1`) |
+| `enabled` | Whether the schedule is enabled |
+| `start_time` | Scheduled start (HH:MM) |
+| `end_time` | Scheduled end (HH:MM) |
+| `type` | `vsp` (variable speed pump), `swc` (chlorinator), or `aux` |
+| `rpm` | Target RPM — VSP schedules only |
+
+### Services
+
+#### `exo_pool.set_schedule` — update a single schedule
+
+Target by entity:
 
 ```yaml
-service: exo_pool.set_schedule
+action: exo_pool.set_schedule
 data:
-  entity_id: binary_sensor.schedule_filter_pump_2
-  start: "11:00"
-  end: "23:00"
-  rpm: 2000            # VSP only, optional
+  entity_id: binary_sensor.schedule_filter_pump
+  start: "08:00"
+  end: "22:00"
+  rpm: 2000        # VSP only, optional
 ```
 
 Or target by device and schedule key:
 
 ```yaml
-service: exo_pool.set_schedule
+action: exo_pool.set_schedule
 data:
   device_id: 1a2b3c4d5e6f7g8h9i0j
-  schedule: sch6
-  start: "11:00"
-  end: "23:00"
+  schedule: sch1
+  start: "08:00"
+  end: "22:00"
 ```
 
-### `exo_pool.set_schedules`
+#### `exo_pool.set_schedules` — update multiple schedules in one call
 
-Update multiple schedules in a **single API call** — one cooldown regardless of how many you change:
+All changes are sent together — only one settling period regardless of how many schedules you update:
 
 ```yaml
-service: exo_pool.set_schedules
+action: exo_pool.set_schedules
 data:
-  device_id: 1a2b3c4d5e6f7g8h9i0j   # optional if only one device
   schedules:
     - schedule: sch1
       start: "08:00"
@@ -129,109 +133,241 @@ data:
     - schedule: sch2
       start: "10:00"
       end: "20:00"
-      rpm: 2000
+      rpm: 2500
     - schedule: sch3
       start: "00:00"
-      end: "00:00"   # 00:00–00:00 disables the schedule
+      end: "00:00"   # 00:00–00:00 disables a schedule
 ```
 
-### `exo_pool.disable_schedule`
-
-Disable a schedule (sets start and end to `00:00`):
+#### `exo_pool.disable_schedule` — disable a schedule
 
 ```yaml
-service: exo_pool.disable_schedule
+action: exo_pool.disable_schedule
 data:
-  entity_id: binary_sensor.schedule_salt_water_chlorinator_2
+  entity_id: binary_sensor.schedule_salt_water_chlorinator
 ```
 
-### `exo_pool.reload`
-
-Reload the integration:
+#### `exo_pool.reload` — reload the integration
 
 ```yaml
-service: exo_pool.reload
-data:
-  entry_id: 8955375327824e14ba89e4b29cc3ec9a   # optional if only one entry
+action: exo_pool.reload
+```
+
+### Device Actions (no YAML needed)
+
+In the automation editor under **Device → your Exo Pool device → Actions**, you can trigger *Set schedule* and *Disable schedule* directly from the UI.
+
+---
+
+## Dashboard examples
+
+The examples below show common patterns — adapt entity IDs and schedule keys to match your device.
+
+### Example 1: Simple pool card
+
+A tile card showing the most important values at a glance:
+
+```yaml
+type: entities
+title: Pool
+entities:
+  - entity: sensor.exo_pool_temperature
+    name: Water Temperature
+  - entity: sensor.exo_pool_ph
+    name: pH
+  - entity: sensor.exo_pool_orp
+    name: ORP
+  - entity: switch.exo_pool_chlorinator
+    name: Chlorinator
+  - entity: binary_sensor.exo_pool_filter_pump
+    name: Filter Pump
+  - entity: binary_sensor.exo_pool_error
+    name: Error
 ```
 
 ---
 
-## Device Actions (Automations)
+### Example 2: Schedule management UI
 
-In the automation editor: **Device → your Exo Pool device → Actions** exposes *Set schedule* and *Disable schedule* directly, without needing to write YAML.
+This pattern lets you manage pump schedules without touching YAML after initial setup.
+
+**How it works:**
+- `input_boolean` helpers act as on/off toggles for each schedule
+- `input_datetime` helpers store the start and end times
+- A script validates the input and calls `exo_pool.set_schedules`
+
+**Helper entities to create** (Settings → Helpers):
+
+| Type | Entity ID | Name |
+|---|---|---|
+| Toggle | `input_boolean.pool_schedule_1` | Pool Schedule 1 |
+| Toggle | `input_boolean.pool_schedule_2` | Pool Schedule 2 |
+| Date/Time (time only) | `input_datetime.pool_schedule_1_start` | Schedule 1 Start |
+| Date/Time (time only) | `input_datetime.pool_schedule_1_end` | Schedule 1 End |
+| Date/Time (time only) | `input_datetime.pool_schedule_2_start` | Schedule 2 Start |
+| Date/Time (time only) | `input_datetime.pool_schedule_2_end` | Schedule 2 End |
+
+**Dashboard card** (requires [mushroom-cards](https://github.com/piitaya/lovelace-mushroom) and [time-picker-card](https://github.com/GeorgeSG/lovelace-time-picker-card)):
+
+```yaml
+type: grid
+cards:
+  - type: heading
+    heading: Schedules
+    heading_style: title
+  - type: custom:mushroom-entity-card
+    entity: input_boolean.pool_schedule_1
+    name: Schedule 1
+    layout: horizontal
+    tap_action:
+      action: toggle
+    grid_options:
+      columns: full
+  - type: horizontal-stack
+    cards:
+      - type: custom:time-picker-card
+        entity: input_datetime.pool_schedule_1_start
+        name: Start
+        layout:
+          embedded: true
+        minute_step: 15
+      - type: custom:time-picker-card
+        entity: input_datetime.pool_schedule_1_end
+        name: End
+        layout:
+          embedded: true
+        minute_step: 15
+  - type: custom:mushroom-entity-card
+    entity: input_boolean.pool_schedule_2
+    name: Schedule 2
+    layout: horizontal
+    tap_action:
+      action: toggle
+    grid_options:
+      columns: full
+  - type: horizontal-stack
+    cards:
+      - type: custom:time-picker-card
+        entity: input_datetime.pool_schedule_2_start
+        name: Start
+        layout:
+          embedded: true
+        minute_step: 15
+      - type: custom:time-picker-card
+        entity: input_datetime.pool_schedule_2_end
+        name: End
+        layout:
+          embedded: true
+        minute_step: 15
+  - type: tile
+    entity: script.pool_apply_schedules
+    name: Apply
+    icon: mdi:content-save
+    grid_options:
+      columns: full
+    tap_action:
+      action: perform-action
+      perform_action: script.pool_apply_schedules
+```
+
+**Script** — validates input, then sends all schedules in a single call:
+
+```yaml
+alias: Pool – Apply Schedules
+mode: single
+sequence:
+  - variables:
+      s1_active: "{{ is_state('input_boolean.pool_schedule_1', 'on') }}"
+      s2_active: "{{ is_state('input_boolean.pool_schedule_2', 'on') }}"
+      s1_start: "{{ states('input_datetime.pool_schedule_1_start') }}"
+      s1_end:   "{{ states('input_datetime.pool_schedule_1_end') }}"
+      s2_start: "{{ states('input_datetime.pool_schedule_2_start') }}"
+      s2_end:   "{{ states('input_datetime.pool_schedule_2_end') }}"
+      s1_start_min: >
+        {% set t = s1_start.split(':') %}
+        {{ t[0] | int * 60 + t[1] | int }}
+      s1_end_min: >
+        {% set t = s1_end.split(':') %}
+        {{ t[0] | int * 60 + t[1] | int }}
+      s2_start_min: >
+        {% set t = s2_start.split(':') %}
+        {{ t[0] | int * 60 + t[1] | int }}
+      s2_end_min: >
+        {% set t = s2_end.split(':') %}
+        {{ t[0] | int * 60 + t[1] | int }}
+      s1_error: "{{ s1_active and s1_start_min | int >= s1_end_min | int }}"
+      s2_error: "{{ s2_active and s2_start_min | int >= s2_end_min | int }}"
+      overlap: >
+        {{ s1_active and s2_active
+           and s1_start_min | int < s2_end_min | int
+           and s2_start_min | int < s1_end_min | int }}
+  - if:
+      - condition: template
+        value_template: "{{ s1_error or s2_error or overlap }}"
+    then:
+      - action: persistent_notification.create
+        data:
+          title: Invalid schedules
+          message: >
+            {% if s1_error %}Schedule 1: start must be before end.{% endif %}
+            {% if s2_error %}Schedule 2: start must be before end.{% endif %}
+            {% if overlap %}Schedules 1 and 2 overlap.{% endif %}
+      - stop: Validation failed
+  - action: exo_pool.set_schedules
+    data:
+      schedules:
+        - schedule: sch1
+          start: "{{ '00:00' if not s1_active else s1_start }}"
+          end:   "{{ '00:00' if not s1_active else s1_end }}"
+        - schedule: sch2
+          start: "{{ '00:00' if not s2_active else s2_start }}"
+          end:   "{{ '00:00' if not s2_active else s2_end }}"
+```
+
+> **Tip:** If your chlorinator schedule should start slightly after and end slightly before the pump schedule (to avoid running without water flow), offset the times using `timedelta`:
+> ```yaml
+> chlor_start: "{{ (today_at(s1_start) + timedelta(minutes=5)).strftime('%H:%M') }}"
+> chlor_end:   "{{ (today_at(s1_end)   - timedelta(minutes=5)).strftime('%H:%M') }}"
+> ```
+> Then pass `chlor_start` / `chlor_end` to the chlorinator schedule and `s1_start` / `s1_end` to the pump schedule.
 
 ---
 
 ## Limitations
 
-- Exo devices only; use the core iAqualink integration for other hardware.
-- Commands go via MQTT when connected (near-instant). If MQTT is unavailable, writes fall back to REST which may be subject to rate limits.
-- Schedule keys and endpoint names are determined by the device; disabling is modelled as `00:00–00:00`.
-- RPM is only relevant to VSP schedules.
-- The climate entity only appears when Aux 2 is configured for heat mode.
+- Exo devices only — use the core iAqualink integration for other Zodiac hardware.
+- Schedule keys (`sch1`, `sch2`, …) are assigned by the device firmware; check the `schedule` attribute on the schedule sensors to find yours.
+- Disabling a schedule is done by setting both start and end to `00:00`.
+- RPM is only relevant for VSP (variable speed pump) schedules.
+- The heat pump climate entity only appears when Aux 2 is configured for heat mode.
 
 ---
 
-## Compatibility
+## Glossary
 
-Confirmed working with:
-
-- **Exo IQ LS** (dual-link ORP & pH, Zodiac VSP pump)
-
-Have success with another model? Open a discussion!
-
----
-
-## History
-
-The core iAqualink integration never supported Exo devices (European Zodiac-branded chlorinators). See: [flz/iaqualink-py#16](https://github.com/flz/iaqualink-py/discussions/16).
-This fork of [benjycov/exo_pool](https://github.com/benjycov/exo_pool) adds MQTT support, batch writes, structural improvements, and ongoing maintenance.
-
----
-
-## Development
-
-### Prerequisites
-
-- Docker
-- Python 3.9+
-- A Zodiac iAqualink account with an Exo device
-
-### Quick start
-
-```bash
-git clone https://github.com/JustChr/exo_pool.git
-cd exo_pool
-
-echo "EXO_EMAIL=your@email.com" > .env
-echo "EXO_PASSWORD=yourpassword" >> .env
-
-make dev
-# Open http://localhost:8125  (login: dev / devdevdev)
-```
-
-### Useful commands
-
-```bash
-make test       # run unit + integration tests
-make logs       # tail the HA container logs
-make restart    # restart HA after code changes
-make stop       # stop the container
-```
-
-### Running tests
-
-```bash
-pip install pytest pytest-asyncio awsiotsdk
-python3 -m pytest tests/ -v
-```
-
-Tests are isolated from Home Assistant — no HA installation required.
+| Term | Meaning |
+|---|---|
+| **ORP** | Oxidation-Reduction Potential — measures how effectively the water sanitises itself. Higher = better disinfection (typical target: 650–750 mV). |
+| **pH** | Measure of water acidity/alkalinity. Ideal pool range: 7.2–7.6. |
+| **SWC** | Salt Water Chlorinator — generates chlorine from dissolved salt in the water. |
+| **VSP** | Variable Speed Pump — a pump whose speed (RPM) can be adjusted by the controller. |
+| **SSP** | Single Speed Pump — a pump that runs at one fixed speed. |
+| **Aux** | Auxiliary relay output on the controller (e.g. for lighting or a heating valve). |
+| **MQTT** | The messaging protocol used by Zodiac's cloud to push real-time updates. |
+| **Schedule key** | Internal identifier for a pump/chlorinator schedule, e.g. `sch1`. Find yours in the schedule sensor's attributes. |
 
 ---
 
 ## Support
 
-- **Bugs / Feature Requests**: [GitHub Issues](https://github.com/JustChr/exo_pool/issues)
-- **Q&A / Discussion**: [GitHub Discussions](https://github.com/JustChr/exo_pool/discussions)
+- **Bugs / Feature Requests:** [GitHub Issues](https://github.com/JustChr/exo_pool/issues)
+- **Q&A / Discussion:** [GitHub Discussions](https://github.com/JustChr/exo_pool/discussions)
+
+---
+
+## History
+
+The Home Assistant core iAqualink integration never supported Exo devices (European Zodiac-branded chlorinators) — see [this discussion](https://github.com/flz/iaqualink-py/discussions/16).
+This is a fork of [benjycov/exo_pool](https://github.com/benjycov/exo_pool), extended with real-time MQTT support, batch schedule writes, and ongoing maintenance.
+
+See [CHANGELOG.md](CHANGELOG.md) for the full version history.
