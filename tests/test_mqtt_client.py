@@ -459,7 +459,7 @@ class TestHeartbeat:
         mock_event_loop.call_later.assert_called()
         args = mock_event_loop.call_later.call_args
         interval = args.args[0] if args.args else args[0][0]
-        from custom_components.exo_pool.mqtt_client import _HEARTBEAT_INTERVAL
+        from custom_components.zodiac_exo.mqtt_client import _HEARTBEAT_INTERVAL
 
         assert interval == _HEARTBEAT_INTERVAL
 
@@ -553,8 +553,8 @@ class TestBuildConnection:
 
     def test_build_connection_uses_sigv4_websockets(self):
         from unittest.mock import patch
-        from custom_components.exo_pool.mqtt_client import ExoMqttClient
-        import custom_components.exo_pool.mqtt_client as mqtt_mod
+        from custom_components.zodiac_exo.mqtt_client import ExoMqttClient
+        import custom_components.zodiac_exo.mqtt_client as mqtt_mod
 
         mock_conn = MagicMock()
 

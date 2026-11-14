@@ -1,4 +1,4 @@
-"""Write queue for Exo Pool: batches and serialises device-state changes."""
+"""Write queue for Zodiac Exo: batches and serialises device-state changes."""
 from __future__ import annotations
 
 import asyncio
@@ -96,7 +96,7 @@ class _WriteManager:
             for future in item.futures:
                 if not future.done():
                     future.set_exception(
-                        HomeAssistantError("Exo Pool integration was unloaded")
+                        HomeAssistantError("Zodiac Exo integration was unloaded")
                     )
         self._pending.clear()
         self._order.clear()

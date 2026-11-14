@@ -15,7 +15,7 @@ _LOGGER = logging.getLogger(__name__)
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    """Set up the button platform for Exo Pool."""
+    """Set up the button platform for Zodiac Exo."""
     coordinator = await get_coordinator(hass, entry)
     async_add_entities([ExoPoolRefreshButton(entry, coordinator)])
 

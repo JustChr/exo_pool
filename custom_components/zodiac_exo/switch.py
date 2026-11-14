@@ -1,4 +1,4 @@
-"""Switch platform for Exo Pool."""
+"""Switch platform for Zodiac Exo."""
 from __future__ import annotations
 
 import logging
@@ -20,7 +20,7 @@ _LOGGER = logging.getLogger(__name__)
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    """Set up the switch platform for Exo Pool."""
+    """Set up the switch platform for Zodiac Exo."""
     coordinator = await get_coordinator(hass, entry)
     async_add_entities(
         [
@@ -34,7 +34,7 @@ async def async_setup_entry(
 
 
 class _ExoSwitch(CoordinatorEntity, SwitchEntity):
-    """Base class for Exo Pool switches backed by an swc_0 field."""
+    """Base class for Zodiac Exo switches backed by an swc_0 field."""
 
     _attr_has_entity_name = True
     _pool_setting: str

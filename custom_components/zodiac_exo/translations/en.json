@@ -1,8 +1,12 @@
 {
   "config": {
     "step": {
+      "migrate": {
+        "title": "Take over your Exo Pool setup",
+        "description": "Found the setup **{title}** from the old Exo Pool integration. Submit to take it over: your login, options, entity IDs, names, areas and device automations are kept, and the old entry is removed."
+      },
       "user": {
-        "title": "Connect to Exo Pool",
+        "title": "Connect to Zodiac iAqualink Exo",
         "description": "Enter your iAqualink email and password.",
         "data": {
           "email": "Email",
@@ -17,7 +21,7 @@
         }
       },
       "reauth_confirm": {
-        "title": "Re-authenticate Exo Pool",
+        "title": "Re-authenticate Zodiac iAqualink Exo",
         "description": "Your iAqualink login was rejected. Enter your current email and password.",
         "data": {
           "email": "Email",
@@ -34,13 +38,14 @@
       "already_configured": "This pool system is already configured.",
       "cannot_connect": "Could not reach the iAqualink service. Try again later.",
       "no_systems": "No eXO pool systems found for this account.",
-      "reauth_successful": "Re-authentication was successful."
+      "reauth_successful": "Re-authentication was successful.",
+      "legacy_still_installed": "The old Exo Pool integration is still installed. Remove it in HACS, restart Home Assistant, then add Zodiac iAqualink Exo again to take over your existing setup."
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "Exo Pool options",
+        "title": "Zodiac iAqualink Exo options",
         "data": {
           "refresh_interval": "REST poll interval (seconds)"
         },

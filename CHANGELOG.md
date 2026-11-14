@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.3.0 – 14 Nov 2026
+
+**The integration has been renamed.** Your existing setup is taken over automatically. See *Upgrading from "Exo Pool"* in the README.
+
+- **New name: Zodiac iAqualink Exo.** Another integration already uses the name "Exo Pool". The domain changes from `exo_pool` to `zodiac_exo`, and the repository moves to `JustChr/ha-zodiac-iaqualink-exo`. The old URL redirects.
+- **Automatic takeover.** Remove *Exo Pool* in HACS, install *Zodiac iAqualink Exo*, restart, then add the integration. It offers to take over your old setup: login, options, entity IDs, history, entity and device customizations, and device automations are all kept.
+- **Actions renamed (breaking).** Change `exo_pool.set_schedule`, `exo_pool.set_schedules`, `exo_pool.disable_schedule` and `exo_pool.reload` to the matching `zodiac_exo.*` action.
+- CI now also boots Home Assistant 2025.1 (the oldest supported version) and the latest release, and runs the smoke test on both.
+
 ## v0.2.0 – 14 Nov 2026
 
 **Requires Home Assistant 2025.1 or newer.**

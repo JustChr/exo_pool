@@ -8,7 +8,7 @@ set_schedule:
       required: false
       selector:
         entity:
-          integration: exo_pool
+          integration: zodiac_exo
           domain: binary_sensor
     device_id:
       name: Device
@@ -16,7 +16,7 @@ set_schedule:
       required: false
       selector:
         device:
-          integration: exo_pool
+          integration: zodiac_exo
     schedule:
       name: Schedule key
       description: The schedule key (e.g., sch1, sch6, sch10). Optional if you target a schedule entity.
@@ -56,7 +56,7 @@ set_schedules:
       required: false
       selector:
         device:
-          integration: exo_pool
+          integration: zodiac_exo
     schedules:
       name: Schedules
       description: List of schedule entries to update. Each entry must have a 'schedule' key (e.g. sch1) plus start, end, and optionally rpm (VSP only).
@@ -74,7 +74,7 @@ set_schedules:
 
 reload:
   name: Reload
-  description: Reload the Exo Pool integration. If you only have one entry, no data is required.
+  description: Reload the Zodiac iAqualink Exo integration. If you only have one entry, no data is required.
   fields:
     device_id:
       name: Device
@@ -82,14 +82,14 @@ reload:
       required: false
       selector:
         device:
-          integration: exo_pool
+          integration: zodiac_exo
     entry_id:
       name: Config entry
-      description: Exo Pool config entry to reload. Optional if targeting a device.
+      description: Zodiac iAqualink Exo config entry to reload. Optional if targeting a device.
       required: false
       selector:
         config_entry:
-          integration: exo_pool
+          integration: zodiac_exo
 
 disable_schedule:
   name: Disable schedule
@@ -101,7 +101,7 @@ disable_schedule:
       required: false
       selector:
         entity:
-          integration: exo_pool
+          integration: zodiac_exo
           domain: binary_sensor
     device_id:
       name: Device
@@ -109,7 +109,7 @@ disable_schedule:
       required: false
       selector:
         device:
-          integration: exo_pool
+          integration: zodiac_exo
     schedule:
       name: Schedule key
       description: The schedule key (e.g., sch1, sch6, sch10). Optional if you target a schedule entity.

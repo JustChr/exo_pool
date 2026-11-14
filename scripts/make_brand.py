@@ -1,7 +1,7 @@
-"""Render the Exo Pool brand images (original design: water droplet with waves).
+"""Render the Zodiac Exo brand images (original design: water droplet with waves).
 
 Writes icon.png / icon@2x.png / logo.png / logo@2x.png / dark_logo*.png into
-custom_components/exo_pool/brand/ and a light/dark preview sheet.
+custom_components/zodiac_exo/brand/ and a light/dark preview sheet.
 
 Usage:
     pip install pillow
@@ -19,7 +19,7 @@ from pathlib import Path
 from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 
 _REPO = Path(__file__).resolve().parent.parent
-OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else _REPO / "custom_components" / "exo_pool" / "brand"
+OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else _REPO / "custom_components" / "zodiac_exo" / "brand"
 PREVIEW = Path(sys.argv[2]) if len(sys.argv) > 2 else Path("brand_preview.png")
 
 _FONT_CANDIDATES = [
@@ -125,7 +125,7 @@ def square(img: Image.Image) -> Image.Image:
 
 def make_logo(icon: Image.Image, height: int, text_color) -> Image.Image:
     font = _font(int(height * 0.62))
-    text = "Exo Pool"
+    text = "Zodiac Exo"
     tb = ImageDraw.Draw(Image.new("L", (1, 1))).textbbox((0, 0), text, font=font)
     tw, th = tb[2] - tb[0], tb[3] - tb[1]
     ic = icon.resize((int(icon.width * height / icon.height), height), Image.LANCZOS)

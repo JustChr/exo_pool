@@ -1,15 +1,15 @@
 {
-  "domain": "exo_pool",
-  "name": "Exo Pool",
+  "domain": "zodiac_exo",
+  "name": "Zodiac iAqualink Exo",
   "categories": ["water.pools_spas"],
   "codeowners": ["@JustChr"],
   "config_flow": true,
   "connectivity": ["cloud"],
-  "documentation": "https://github.com/JustChr/exo_pool",
+  "documentation": "https://github.com/JustChr/ha-zodiac-iaqualink-exo",
   "integration_type": "hub",
   "iot_class": "cloud_push",
-  "issue_tracker": "https://github.com/JustChr/exo_pool/issues",
+  "issue_tracker": "https://github.com/JustChr/ha-zodiac-iaqualink-exo/issues",
   "loggers": ["awscrt", "awsiot"],
   "requirements": ["awsiotsdk>=1.28.0"],
-  "version": "0.2.0"
+  "version": "0.3.0"
 }

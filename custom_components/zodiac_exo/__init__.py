@@ -1,4 +1,4 @@
-"""The Exo Pool integration."""
+"""The Zodiac Exo integration."""
 from __future__ import annotations
 
 import logging
@@ -22,6 +22,7 @@ from homeassistant.helpers.typing import ConfigType
 from . import api as exo_api
 from .api import async_cleanup_entry, get_coordinator
 from .const import DOMAIN, PLATFORMS, swc0
+from .migration import MIGRATE_FROM, async_adopt_legacy_entry
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -84,8 +85,11 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up Exo Pool from a config entry."""
-    _LOGGER.debug("Setting up Exo Pool entry %s", entry.entry_id)
+    """Set up Zodiac Exo from a config entry."""
+    _LOGGER.debug("Setting up Zodiac Exo entry %s", entry.entry_id)
+
+    if MIGRATE_FROM in entry.data:
+        await async_adopt_legacy_entry(hass, entry)
 
     # Entries created before v0.2.0 have no unique_id; backfill it so the
     # same system cannot be added twice.
@@ -103,7 +107,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         raise
     except Exception as err:
         await async_cleanup_entry(hass, entry)
-        raise ConfigEntryNotReady(f"Failed to initialize Exo Pool: {err}") from err
+        raise ConfigEntryNotReady(f"Failed to initialize Zodiac Exo: {err}") from err
 
     device_registry = dr.async_get(hass)
     device_entry = device_registry.async_get_or_create(
@@ -193,19 +197,19 @@ def _find_entry_from_device(hass: HomeAssistant, device_id) -> ConfigEntry:
             entry = hass.config_entries.async_get_entry(entry_id)
             if entry:
                 return entry
-    raise ServiceValidationError("Device is not an Exo Pool device")
+    raise ServiceValidationError("Device is not a Zodiac Exo device")
 
 
 def _default_entry(hass: HomeAssistant) -> ConfigEntry:
     entries = hass.config_entries.async_entries(DOMAIN)
     if len(entries) != 1:
-        raise ServiceValidationError("Select an Exo Pool device")
+        raise ServiceValidationError("Select a Zodiac Exo device")
     return entries[0]
 
 
 def _loaded(entry: ConfigEntry) -> ConfigEntry:
     if entry.state is not ConfigEntryState.LOADED:
-        raise ServiceValidationError("Exo Pool config entry is not loaded")
+        raise ServiceValidationError("Zodiac Exo config entry is not loaded")
     return entry
 
 
@@ -225,7 +229,7 @@ def _resolve_target(
         entity_id = _single(entity_id, "entity")
         ent = er.async_get(hass).async_get(entity_id)
         if not ent or ent.platform != DOMAIN:
-            raise ServiceValidationError(f"{entity_id} is not an Exo Pool entity")
+            raise ServiceValidationError(f"{entity_id} is not a Zodiac Exo entity")
         entry = hass.config_entries.async_get_entry(ent.config_entry_id)
         if entry is None:
             raise ServiceValidationError("Config entry not found")

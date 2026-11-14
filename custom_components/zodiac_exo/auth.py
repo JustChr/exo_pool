@@ -1,4 +1,4 @@
-"""Authentication helpers for Exo Pool (login, token refresh, AWS credentials)."""
+"""Authentication helpers for Zodiac Exo (login, token refresh, AWS credentials)."""
 from __future__ import annotations
 
 import logging
@@ -56,7 +56,7 @@ async def _full_login(
     if status in _AUTH_REJECTED_STATUSES:
         _LOGGER.error("Login rejected (status %s)", status)
         _set_auth_failed(store, f"Login rejected (status {status})")
-        raise ConfigEntryAuthFailed("Exo Pool login rejected; please re-authenticate")
+        raise ConfigEntryAuthFailed("Zodiac Exo login rejected; please re-authenticate")
     if status != 200 or data is None:
         _LOGGER.error("Login failed (status %s)", status)
         _set_auth_failed(store, f"Login failed (status {status})")

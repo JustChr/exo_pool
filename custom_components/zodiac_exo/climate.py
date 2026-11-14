@@ -1,4 +1,4 @@
-"""Climate platform for Exo Pool (heat pump on Aux 2)."""
+"""Climate platform for Zodiac Exo (heat pump on Aux 2)."""
 from __future__ import annotations
 
 import logging
@@ -33,7 +33,7 @@ _HAS_NATIVE_TEMPERATURE_API = hasattr(ClimateEntity, "native_temperature_unit")
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    """Set up climate entity for Exo Pool heat pump (Aux 2 mode heat)."""
+    """Set up climate entity for Zodiac Exo heat pump (Aux 2 mode heat)."""
     coordinator = await get_coordinator(hass, entry)
     created = False
 

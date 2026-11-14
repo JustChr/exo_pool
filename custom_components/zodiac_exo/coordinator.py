@@ -1,4 +1,4 @@
-"""Coordinator setup for Exo Pool."""
+"""Coordinator setup for Zodiac Exo."""
 from __future__ import annotations
 
 import asyncio
@@ -30,7 +30,7 @@ async def get_coordinator(hass: HomeAssistant, entry: ConfigEntry) -> DataUpdate
         hass,
         _LOGGER,
         config_entry=entry,
-        name="Exo Pool",
+        name="Zodiac Exo",
         update_method=lambda: async_update_data(hass, entry),
         update_interval=timedelta(seconds=seconds),
     )

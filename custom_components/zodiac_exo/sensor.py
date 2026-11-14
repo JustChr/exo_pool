@@ -22,7 +22,7 @@ _LOGGER = logging.getLogger(__name__)
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    """Set up the sensor platform for Exo Pool."""
+    """Set up the sensor platform for Zodiac Exo."""
     # Initialize or retrieve shared coordinator
     coordinator = await get_coordinator(hass, entry)
 

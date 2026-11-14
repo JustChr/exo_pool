@@ -1,4 +1,4 @@
-"""Boot a real HomeAssistant core and exercise the exo_pool integration.
+"""Boot a real HomeAssistant core and exercise the zodiac_exo integration.
 
 Works on Windows, where pytest-homeassistant-custom-component cannot run.
 Network is replaced by a fake aiohttp session; MQTT is disabled. Run it against
@@ -118,6 +118,75 @@ def check(cond, msg):
         failures.append(msg)
 
 
+def _legacy_entry() -> config_entries.ConfigEntry:
+    """A config entry as v0.2.x of this integration (domain exo_pool) left it."""
+    import inspect
+
+    kwargs = {
+        "domain": "exo_pool", "title": f"Exo Pool ({SERIAL})", "unique_id": SERIAL,
+        "source": "user", "version": 1, "minor_version": 1, "discovery_keys": {},
+        "options": {"refresh_interval": 900}, "subentries_data": None,
+        "data": {"email": "u@example.com", "password": "pw", "auth_token": "auth-token",
+                 "id_token": "id-token", "user_id": "user-1", "serial_number": SERIAL,
+                 "expires_at": time.time() + 3600},
+    }
+    params = inspect.signature(config_entries.ConfigEntry).parameters
+    return config_entries.ConfigEntry(**{k: v for k, v in kwargs.items() if k in params})
+
+
+async def migration_scenario(hass):
+    old = _legacy_entry()
+    await hass.config_entries.async_add(old)  # setup fails: exo_pool is not installed
+    await hass.async_block_till_done()
+    area = ar.async_get(hass).async_create("Garden")
+    dev_reg, ent_reg = dr.async_get(hass), er.async_get(hass)
+    device = dev_reg.async_get_or_create(
+        config_entry_id=old.entry_id, identifiers={("exo_pool", old.entry_id)},
+        manufacturer="Zodiac", name="Exo Pool", model="Exo")
+    dev_reg.async_update_device(device.id, area_id=area.id, name_by_user="My Pool")
+    ph = ent_reg.async_get_or_create(
+        "sensor", "exo_pool", f"{old.entry_id}_ph", config_entry=old,
+        device_id=device.id, suggested_object_id="exo_pool_ph")
+    ent_reg.async_update_entity(ph.entity_id, name="Pool pH", icon="mdi:flask")
+    hidden = ent_reg.async_get_or_create(
+        "sensor", "exo_pool", f"{old.entry_id}_wifi_rssi", config_entry=old,
+        device_id=device.id, suggested_object_id="exo_pool_wi_fi_rssi")
+    ent_reg.async_update_entity(hidden.entity_id, disabled_by=er.RegistryEntryDisabler.USER)
+
+    res = await hass.config_entries.flow.async_init("zodiac_exo", context={"source": "user"})
+    check(res.get("step_id") == "migrate", f"user flow offers takeover ({res.get('step_id')}, {res.get('reason')})")
+    res = await hass.config_entries.flow.async_configure(res["flow_id"], {})
+    check(res["type"] == "create_entry", f"takeover creates entry ({res['type']})")
+    await hass.async_block_till_done()
+    new = res["result"]
+    check(new.state is config_entries.ConfigEntryState.LOADED, f"taken-over entry loaded ({new.state})")
+    check(new.title == f"Zodiac Exo ({SERIAL})", f"title renamed ({new.title})")
+    check(new.options.get("refresh_interval") == 900, "options kept")
+    check("migrate_from_entry_id" not in new.data and new.data["password"] == "pw", "login kept, marker removed")
+    check(not hass.config_entries.async_entries("exo_pool"), "old entry removed")
+    check(ir.async_get(hass).async_get_issue("homeassistant", "integration_not_found.exo_pool") is None,
+          "'integration not found' repair cleared")
+    reg = ent_reg.async_get("sensor.exo_pool_ph")
+    check(reg is not None and reg.platform == "zodiac_exo" and reg.config_entry_id == new.entry_id,
+          "pH entity moved to zodiac_exo")
+    check(reg.name == "Pool pH" and reg.icon == "mdi:flask", "entity customizations kept")
+    check(reg.device_id == device.id, "device id kept (device automations keep working)")
+    check(ent_reg.async_get(hidden.entity_id).disabled_by is er.RegistryEntryDisabler.USER, "disabled entity stays disabled")
+    check(ent_reg.async_get("sensor.exo_pool_ph_2") is None, "no duplicate _2 entities")
+    dev = dev_reg.async_get(device.id)
+    check(dev.area_id == area.id and dev.name_by_user == "My Pool", "device area + custom name kept")
+    check(dev.identifiers == {("zodiac_exo", new.entry_id)}
+          and ({dev.config_entry_id} if hasattr(dev, "config_entry_id") else set(dev.config_entries)) == {new.entry_id},
+          "device now belongs to zodiac_exo only")
+    state = hass.states.get("sensor.exo_pool_ph")
+    check(state is not None and state.state == "7.3", f"pH sensor reports under the old entity ID ({state and state.state})")
+
+    # A second "add integration" goes back to the normal login form.
+    res = await hass.config_entries.flow.async_init("zodiac_exo", context={"source": "user"})
+    check(res.get("step_id") == "user", "no takeover offered once migrated")
+    hass.config_entries.flow.async_abort(res["flow_id"])
+
+
 async def main():
     hass = HomeAssistant(str(CFG))
     hass.config.skip_pip = True
@@ -132,26 +201,26 @@ async def main():
 
     session = FakeSession()
     with patch("homeassistant.helpers.aiohttp_client.async_get_clientsession", return_value=session), \
-         patch("custom_components.exo_pool.api._connect_mqtt", return_value=False):
+         patch("custom_components.zodiac_exo.api._connect_mqtt", return_value=False):
         print(f"HA {HA_VERSION}")
 
         # --- config flow
-        res = await hass.config_entries.flow.async_init("exo_pool", context={"source": "user"})
+        res = await hass.config_entries.flow.async_init("zodiac_exo", context={"source": "user"})
         res = await hass.config_entries.flow.async_configure(
             res["flow_id"], {"email": "u@example.com", "password": "pw"})
         check(res.get("step_id") == "select_system", f"flow -> select_system ({res.get('step_id')}, {res.get('errors')})")
-        with patch("custom_components.exo_pool.async_setup_entry", return_value=True):
+        with patch("custom_components.zodiac_exo.async_setup_entry", return_value=True):
             res = await hass.config_entries.flow.async_configure(res["flow_id"], {"system": f"{SERIAL} (Pool)"})
         check(res["type"] == "create_entry", "flow creates entry")
         entry = res["result"]
         check(entry.unique_id == SERIAL, "entry has unique_id")
-        res = await hass.config_entries.flow.async_init("exo_pool", context={"source": "user"})
+        res = await hass.config_entries.flow.async_init("zodiac_exo", context={"source": "user"})
         res = await hass.config_entries.flow.async_configure(res["flow_id"], {"email": "u@example.com", "password": "pw"})
         res = await hass.config_entries.flow.async_configure(res["flow_id"], {"system": f"{SERIAL} (Pool)"})
         check(res["type"] == "abort" and res["reason"] == "already_configured", "duplicate aborted")
 
         # --- setup
-        with patch("custom_components.exo_pool.async_unload_entry", return_value=True):
+        with patch("custom_components.zodiac_exo.async_unload_entry", return_value=True):
             await hass.config_entries.async_unload(entry.entry_id)
         hass.config_entries.async_update_entry(entry, data={**entry.data, "expires_at": time.time() + 3600})
         assert await hass.config_entries.async_setup(entry.entry_id)
@@ -179,31 +248,31 @@ async def main():
             {"entity_id": "number.exo_pool_ph_set_point", "value": 7.3}, blocking=True)
         posts = [cl for cl in session.calls if cl[0] == "POST"]
         check(posts[-1][2]["json"] == {"state": {"desired": {"equipment": {"swc_0": {"ph_sp": 73}}}}}, f"pH payload {posts[-1][2]['json']}")
-        await hass.services.async_call("exo_pool", "set_schedule",
+        await hass.services.async_call("zodiac_exo", "set_schedule",
             {"entity_id": "binary_sensor.exo_pool_schedule_filter_pump", "start": "09:00", "end": "19:00", "rpm": 1800}, blocking=True)
         check(True, "set_schedule service accepted")
         try:
-            await hass.services.async_call("exo_pool", "set_schedule",
+            await hass.services.async_call("zodiac_exo", "set_schedule",
                 {"device_id": "x", "start": "99:00"}, blocking=True)
             check(False, "invalid service call rejected")
         except Exception as err:  # noqa: BLE001
             check(True, f"invalid service call rejected ({type(err).__name__})")
 
         # --- device action schema exists
-        from custom_components.exo_pool import device_action
+        from custom_components.zodiac_exo import device_action
         check(hasattr(device_action, "ACTION_SCHEMA"), "device_action.ACTION_SCHEMA present")
 
         # --- diagnostics redaction
-        from custom_components.exo_pool.diagnostics import async_get_config_entry_diagnostics
+        from custom_components.zodiac_exo.diagnostics import async_get_config_entry_diagnostics
         diag = json.dumps(await async_get_config_entry_diagnostics(hass, entry))
         check("pw" not in diag and "id-token" not in diag and SERIAL not in diag, "diagnostics redacted")
 
         # --- unload
-        coordinator = hass.data["exo_pool"][entry.entry_id]["coordinator"]
+        coordinator = hass.data["zodiac_exo"][entry.entry_id]["coordinator"]
         check(await hass.config_entries.async_unload(entry.entry_id), "unload ok")
         await hass.async_block_till_done()
         check(not coordinator._listeners, f"no coordinator listeners left after unload ({len(coordinator._listeners)})")
-        check(entry.entry_id not in hass.data.get("exo_pool", {}), "entry store removed")
+        check(entry.entry_id not in hass.data.get("zodiac_exo", {}), "entry store removed")
 
         # --- reload works
         assert await hass.config_entries.async_setup(entry.entry_id)
@@ -223,13 +292,18 @@ async def main():
         check(bool(reauth), "reauth flow started")
         session.login_status = 200
         if reauth:
-            with patch("custom_components.exo_pool.async_setup_entry", return_value=True):
+            with patch("custom_components.zodiac_exo.async_setup_entry", return_value=True):
                 res = await hass.config_entries.flow.async_configure(
                     reauth[0]["flow_id"], {"email": "u@example.com", "password": "new"})
             check(res.get("reason") == "reauth_successful", f"reauth successful ({res.get('reason')}, {res.get('errors')})")
             check(entry.data["password"] == "new", "password updated")
 
-    bad = [r for r in log_records if "deprecated" in r.getMessage() or "exo_pool" in r.getMessage() and r.levelno >= logging.ERROR]
+        # --- take over a leftover entry of the old "Exo Pool" (exo_pool) integration
+        await hass.config_entries.async_remove(entry.entry_id)
+        await hass.async_block_till_done()
+        await migration_scenario(hass)
+
+    bad =[r for r in log_records if "deprecated" in r.getMessage() or "zodiac_exo" in r.getMessage() and r.levelno >= logging.ERROR]
     for r in bad:
         print("  LOG", r.levelname, r.getMessage()[:300])
     check(not any("deprecated" in r.getMessage() for r in log_records), "no deprecation warnings logged")
