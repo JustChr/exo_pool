@@ -42,7 +42,7 @@ In v0.3.0 the integration was renamed from **Exo Pool** (`exo_pool`) to **Zodiac
 2. In the Marketplace (or HACS), **uninstall Exo Pool**, then **install Zodiac iAqualink Exo** (same repository, new name), and restart Home Assistant.
 3. **Add Integration → Zodiac iAqualink Exo** and log in with your iAqualink account.
 
-What's restored: entity IDs (including ones you changed yourself), history, entity names, icons, areas, labels, and hidden or disabled entities, plus the device's area and name.
+What's restored: entity IDs (including ones you changed yourself), history, entity names, icons, areas, labels, and hidden or disabled entities, plus the device's area and name. Older Home Assistant versions (early 2025) restore only the entity IDs and history.
 
 What you need to redo:
 - Automations or scripts that call `exo_pool.*` actions need `zodiac_exo.*`, for example `zodiac_exo.set_schedule`.
