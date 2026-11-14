@@ -16,3 +16,4 @@ custom_components/exo_pool/home-assistant*
 custom_components/exo_pool/.HA_VERSION
 __pycache__/
 .pytest_cache/
+brand_preview.png

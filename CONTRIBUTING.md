@@ -47,3 +47,10 @@ python3 -m pytest tests/ -v
 ```
 
 CI (`.github/workflows/tests.yml`) runs the full suite on every push and pull request.
+
+## Helper scripts
+
+| Script | Purpose |
+|---|---|
+| `scripts/smoke_test.py` | Boots a real Home Assistant core (works on Windows) with a fake cloud session and checks config flow, setup, entities, climate, writes, services, unload/reload and re-auth. Install `homeassistant==<version> awsiotsdk` in a venv first; run it against an HA version before and after 2026.11 to cover both climate API paths. |
+| `scripts/make_brand.py` | Regenerates the icon and logos in `custom_components/exo_pool/brand/` (needs `pillow`). Edit the design here rather than the PNGs. |
