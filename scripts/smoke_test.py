@@ -187,6 +187,65 @@ async def migration_scenario(hass):
     hass.config_entries.flow.async_abort(res["flow_id"])
 
 
+async def deleted_setup_scenario(hass):
+    import attr
+
+    old = _legacy_entry()
+    await hass.config_entries.async_add(old)
+    await hass.async_block_till_done()
+    lr.async_get(hass).async_create("Pool stuff")
+    label_id = next(iter(lr.async_get(hass).labels.values())).label_id
+    area = ar.async_get(hass).async_get_area_by_name("Garden") or ar.async_get(hass).async_create("Garden")
+    dev_reg, ent_reg = dr.async_get(hass), er.async_get(hass)
+    device = dev_reg.async_get_or_create(
+        config_entry_id=old.entry_id, identifiers={("exo_pool", old.entry_id)},
+        manufacturer="Zodiac", name="Exo Pool", model="Exo")
+    dev_reg.async_update_device(device.id, area_id=area.id, name_by_user="Pool")
+
+    def make(domain, key, entity_id, **changes):
+        e = ent_reg.async_get_or_create(domain, "exo_pool", f"{old.entry_id}_{key}",
+                                        config_entry=old, device_id=device.id)
+        return ent_reg.async_update_entity(e.entity_id, new_entity_id=entity_id, **changes)
+
+    make("sensor", "ph", "sensor.pool_ph", hidden_by=er.RegistryEntryHider.USER, labels={label_id})
+    make("sensor", "orp", "sensor.pool_orp", disabled_by=er.RegistryEntryDisabler.USER)
+    make("sensor", "temp", "sensor.pool_temperatur", name="Temperatur", area_id=area.id)
+
+    await hass.config_entries.async_remove(old.entry_id)  # what Marketplace requires
+    await hass.async_block_till_done()
+    check(ent_reg.async_get("sensor.pool_ph") is None, "old entities gone after deleting Exo Pool")
+
+    res = await hass.config_entries.flow.async_init("zodiac_exo", context={"source": "user"})
+    check(res.get("step_id") == "user", "deleted setup -> normal login form")
+    res = await hass.config_entries.flow.async_configure(res["flow_id"], {"email": "u@example.com", "password": "pw"})
+    res = await hass.config_entries.flow.async_configure(res["flow_id"], {"system": f"{SERIAL} (Pool)"})
+    check(res["type"] == "create_entry", "re-added after deleting")
+    await hass.async_block_till_done()
+    new = res["result"]
+    check(new.state is config_entries.ConfigEntryState.LOADED, f"re-added entry loaded ({new.state})")
+
+    full = "name" in attr.fields_dict(er.DeletedRegistryEntry)  # HA versions restoring more than the entity ID
+    ph = ent_reg.async_get("sensor.pool_ph")
+    check(ph is not None and ph.platform == "zodiac_exo" and ph.config_entry_id == new.entry_id,
+          "custom entity ID restored (sensor.pool_ph)")
+    check(ent_reg.async_get("sensor.pool_orp") is not None, "custom entity ID restored (sensor.pool_orp)")
+    temp = ent_reg.async_get("sensor.pool_temperatur")
+    check(temp is not None, "custom entity ID restored (sensor.pool_temperatur)")
+    st = hass.states.get("sensor.pool_ph")
+    check(st is not None and st.state == "7.3", f"restored entity reports data ({st and st.state})")
+    if full:
+        check(ph.hidden_by is er.RegistryEntryHider.USER and label_id in ph.labels, "hidden + labels restored")
+        check(ent_reg.async_get("sensor.pool_orp").disabled_by is er.RegistryEntryDisabler.USER, "disabled restored")
+        check(temp.name == "Temperatur" and temp.area_id == area.id, "entity name + area restored")
+    else:
+        print("  info older HA: only entity IDs are restored")
+    newdev = dr.async_get(hass).async_get(ph.device_id)
+    check(newdev.area_id == area.id and newdev.name_by_user == "Pool", "device area + name copied")
+    dupes = [e.entity_id for e in ent_reg.entities.values() if e.entity_id.endswith("_2") and ent_reg.async_get(e.entity_id[:-2])]
+    check(not dupes, f"no duplicate _2 entities {dupes}")
+    check(not [k for k in ent_reg.deleted_entities if k[1] == "exo_pool"], "no exo_pool leftovers in deleted entities")
+
+
 async def main():
     hass = HomeAssistant(str(CFG))
     hass.config.skip_pip = True
@@ -302,6 +361,12 @@ async def main():
         await hass.config_entries.async_remove(entry.entry_id)
         await hass.async_block_till_done()
         await migration_scenario(hass)
+
+        # --- restore the settings of a deleted "Exo Pool" setup (Marketplace path)
+        for e in hass.config_entries.async_entries("zodiac_exo"):
+            await hass.config_entries.async_remove(e.entry_id)
+        await hass.async_block_till_done()
+        await deleted_setup_scenario(hass)
 
     bad =[r for r in log_records if "deprecated" in r.getMessage() or "zodiac_exo" in r.getMessage() and r.levelno >= logging.ERROR]
     for r in bad:

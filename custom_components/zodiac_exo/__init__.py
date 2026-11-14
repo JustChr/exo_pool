@@ -22,7 +22,12 @@ from homeassistant.helpers.typing import ConfigType
 from . import api as exo_api
 from .api import async_cleanup_entry, get_coordinator
 from .const import DOMAIN, PLATFORMS, swc0
-from .migration import MIGRATE_FROM, async_adopt_legacy_entry
+from .migration import (
+    MIGRATE_FROM,
+    async_adopt_deleted_entities,
+    async_adopt_legacy_entry,
+    async_restore_device_settings,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -109,6 +114,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await async_cleanup_entry(hass, entry)
         raise ConfigEntryNotReady(f"Failed to initialize Zodiac Exo: {err}") from err
 
+    # A removed Exo Pool setup leaves its entity settings behind; inherit them
+    # before the platforms create the entities.
+    adopted_from = async_adopt_deleted_entities(hass, entry)
+
     device_registry = dr.async_get(hass)
     device_entry = device_registry.async_get_or_create(
         config_entry_id=entry.entry_id,
@@ -117,6 +126,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         name="Exo Pool",
         model="Exo",
     )
+
+    if adopted_from:
+        async_restore_device_settings(hass, adopted_from, device_entry.id)
 
     @callback
     def _update_device_info() -> None:
