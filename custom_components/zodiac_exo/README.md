@@ -36,15 +36,18 @@ Have success with another model? [Open a discussion!](https://github.com/JustChr
 
 ### Upgrading from "Exo Pool" (v0.2.x and older)
 
-In v0.3.0 the integration was renamed from **Exo Pool** (`exo_pool`) to **Zodiac iAqualink Exo** (`zodiac_exo`), because another integration already uses the old name. Your existing setup is taken over automatically:
+In v0.3.0 the integration was renamed from **Exo Pool** (`exo_pool`) to **Zodiac iAqualink Exo** (`zodiac_exo`), because another integration already uses the old name. Home Assistant can't update an integration whose domain changed, so you reinstall it once. Your entity settings are restored automatically:
 
-1. In HACS, remove **Exo Pool**. Do **not** delete the integration under *Devices & Services*, because that throws away the settings to be taken over.
-2. Install **Zodiac iAqualink Exo** as described above and restart Home Assistant.
-3. Go to **Settings → Devices & Services → Add Integration → Zodiac iAqualink Exo**. It finds your Exo Pool setup and offers to take it over. Confirm, and you're done.
+1. **Settings → Devices & Services → Exo Pool → ⋮ → Delete.** Home Assistant keeps the settings of the deleted entities for 30 days, so they can be restored.
+2. In the Marketplace (or HACS), **uninstall Exo Pool**, then **install Zodiac iAqualink Exo** (same repository, new name), and restart Home Assistant.
+3. **Add Integration → Zodiac iAqualink Exo** and log in with your iAqualink account.
 
-Everything is kept: your login and options, entity IDs (for example `sensor.exo_pool_ph`), history, entity names, icons, areas, disabled entities, and the device, so device-based automations keep working. You may see a "Exo Pool integration not found" repair until you do step 3. It disappears after the takeover.
+What's restored: entity IDs (including ones you changed yourself), history, entity names, icons, areas, labels, and hidden or disabled entities, plus the device's area and name.
 
-The only thing to change by hand: automations or scripts that call `exo_pool.*` actions need `zodiac_exo.*`, for example `zodiac_exo.set_schedule`.
+What you need to redo:
+- Automations or scripts that call `exo_pool.*` actions need `zodiac_exo.*`, for example `zodiac_exo.set_schedule`.
+- The device gets a new internal ID, so automation steps that pick the **device** (device triggers, conditions or actions) must be selected again. Steps that use entities keep working.
+- The REST poll interval option, if you changed it.
 
 ---
 

@@ -340,3 +340,38 @@ async def test_takeover_refused_while_old_integration_installed(
         )
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "legacy_still_installed"
+
+
+async def test_settings_of_deleted_exo_pool_setup_are_restored(
+    hass: HomeAssistant, aioclient_mock
+) -> None:
+    """Deleting Exo Pool and adding Zodiac Exo keeps entity IDs and settings."""
+    from homeassistant.helpers import device_registry as dr
+    from homeassistant.helpers import entity_registry as er
+
+    old = MockConfigEntry(domain="exo_pool", unique_id=SERIAL, data=dict(_entry().data))
+    old.add_to_hass(hass)
+    dev_reg, ent_reg = dr.async_get(hass), er.async_get(hass)
+    device = dev_reg.async_get_or_create(
+        config_entry_id=old.entry_id, identifiers={("exo_pool", old.entry_id)}
+    )
+    dev_reg.async_update_device(device.id, name_by_user="Pool")
+    ph = ent_reg.async_get_or_create(
+        "sensor", "exo_pool", f"{old.entry_id}_ph", config_entry=old, device_id=device.id
+    )
+    ent_reg.async_update_entity(
+        ph.entity_id, new_entity_id="sensor.pool_ph", hidden_by=er.RegistryEntryHider.USER
+    )
+    await hass.config_entries.async_remove(old.entry_id)
+    await hass.async_block_till_done()
+    assert ent_reg.async_get("sensor.pool_ph") is None
+
+    entry = await _setup(hass, aioclient_mock)
+
+    restored = ent_reg.async_get("sensor.pool_ph")
+    assert restored.platform == DOMAIN
+    assert restored.unique_id == f"{entry.entry_id}_ph"
+    assert restored.hidden_by is er.RegistryEntryHider.USER
+    assert hass.states.get("sensor.pool_ph").state == "7.3"
+    assert dev_reg.async_get(restored.device_id).name_by_user == "Pool"
+    assert not [k for k in ent_reg.deleted_entities if k[1] == "exo_pool"]
