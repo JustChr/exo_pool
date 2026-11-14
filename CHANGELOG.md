@@ -17,6 +17,7 @@
 - **Entity naming** – Entities use Home Assistant's device-based naming (`has_entity_name`). Existing entity IDs are unchanged; friendly names are now prefixed with the device name (e.g. "Exo Pool Temperature").
 - Error messages from failed writes are shown as proper Home Assistant errors.
 - Added Home Assistant integration tests and a CI workflow.
+- **New icon and logo** – shown in Home Assistant (2026.x reads them from the integration's `brand/` folder) and in HACS. Manifest now declares its category (Water › Pools & spas) and cloud connectivity.
 
 ## v0.1.21 – 20 Apr 2026
 
