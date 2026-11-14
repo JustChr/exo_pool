@@ -20,12 +20,6 @@ from homeassistant.helpers import aiohttp_client
 from .api import REFRESH_DEFAULT, REFRESH_MAX, REFRESH_MIN, REFRESH_OPTION_KEY
 from .auth import async_login
 from .const import API_KEY_R, DEVICES_URL, DOMAIN, redact
-from .migration import (
-    MIGRATE_FROM,
-    adopted_title,
-    async_legacy_installed,
-    legacy_candidates,
-)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -103,12 +97,8 @@ class ExoPoolConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Ask for iAqualink credentials (or offer to take over Exo Pool)."""
+        """Ask for iAqualink credentials."""
         errors: dict[str, str] = {}
-        if user_input is None and legacy_candidates(self.hass):
-            if await async_legacy_installed(self.hass):
-                return self.async_abort(reason="legacy_still_installed")
-            return await self.async_step_migrate()
         if user_input is not None:
             try:
                 self._login = await _async_authenticate(
@@ -130,27 +120,6 @@ class ExoPoolConfigFlow(ConfigFlow, domain=DOMAIN):
             step_id="user",
             data_schema=self.add_suggested_values_to_schema(LOGIN_SCHEMA, user_input),
             errors=errors,
-        )
-
-    async def async_step_migrate(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Take over an existing setup of the old Exo Pool integration."""
-        candidates = legacy_candidates(self.hass)
-        if not candidates:
-            return self.async_show_form(step_id="user", data_schema=LOGIN_SCHEMA)
-        old = candidates[0]
-        if user_input is None:
-            return self.async_show_form(
-                step_id="migrate",
-                description_placeholders={"title": old.title},
-            )
-        await self.async_set_unique_id(old.data["serial_number"])
-        self._abort_if_unique_id_configured()
-        return self.async_create_entry(
-            title=adopted_title(old),
-            data={**old.data, MIGRATE_FROM: old.entry_id},
-            options=dict(old.options),
         )
 
     async def _async_fetch_systems(self) -> dict[str, str]:
