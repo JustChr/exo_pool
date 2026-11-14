@@ -240,7 +240,10 @@ async def deleted_setup_scenario(hass):
     else:
         print("  info older HA: only entity IDs are restored")
     newdev = dr.async_get(hass).async_get(ph.device_id)
-    check(newdev.area_id == area.id and newdev.name_by_user == "Pool", "device area + name copied")
+    if "area_id" in attr.fields_dict(dr.DeletedDeviceEntry):
+        check(newdev.area_id == area.id and newdev.name_by_user == "Pool", "device area + name copied")
+    else:
+        print("  info older HA: deleted devices keep no area/name to copy")
     dupes = [e.entity_id for e in ent_reg.entities.values() if e.entity_id.endswith("_2") and ent_reg.async_get(e.entity_id[:-2])]
     check(not dupes, f"no duplicate _2 entities {dupes}")
     check(not [k for k in ent_reg.deleted_entities if k[1] == "exo_pool"], "no exo_pool leftovers in deleted entities")

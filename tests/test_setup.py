@@ -373,5 +373,8 @@ async def test_settings_of_deleted_exo_pool_setup_are_restored(
     assert restored.unique_id == f"{entry.entry_id}_ph"
     assert restored.hidden_by is er.RegistryEntryHider.USER
     assert hass.states.get("sensor.pool_ph").state == "7.3"
-    assert dev_reg.async_get(restored.device_id).name_by_user == "Pool"
+    import attr
+
+    if "name_by_user" in attr.fields_dict(dr.DeletedDeviceEntry):
+        assert dev_reg.async_get(restored.device_id).name_by_user == "Pool"
     assert not [k for k in ent_reg.deleted_entities if k[1] == "exo_pool"]
