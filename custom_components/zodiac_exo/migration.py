@@ -209,12 +209,16 @@ def async_restore_device_settings(
     device = dev_reg.async_get(device_id)
     if device is None:
         return
+    # Older Home Assistant versions keep fewer fields for deleted devices.
     changes: dict[str, Any] = {}
-    if old.area_id and not device.area_id:
-        changes["area_id"] = old.area_id
-    if old.name_by_user and not device.name_by_user:
-        changes["name_by_user"] = old.name_by_user
-    if getattr(old, "labels", None) and not device.labels:
-        changes["labels"] = set(old.labels)
+    if (area_id := getattr(old, "area_id", None)) and not device.area_id:
+        changes["area_id"] = area_id
+    if (name := getattr(old, "name_by_user", None)) and not device.name_by_user:
+        changes["name_by_user"] = name
+    if (labels := getattr(old, "labels", None)) and not device.labels:
+        changes["labels"] = set(labels)
     if changes:
-        dev_reg.async_update_device(device_id, **changes)
+        try:
+            dev_reg.async_update_device(device_id, **changes)
+        except Exception:  # noqa: BLE001 - e.g. the area no longer exists
+            _LOGGER.debug("Could not restore the Exo Pool device settings", exc_info=True)
