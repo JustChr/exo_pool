@@ -34,20 +34,9 @@ Have success with another model? [Open a discussion!](https://github.com/JustChr
 4. Restart Home Assistant
 5. Go to **Settings → Devices & Services → Add Integration**, search for **Zodiac iAqualink Exo**, and enter your Zodiac iAqualink credentials
 
-### Upgrading from "Exo Pool" (v0.2.x and older)
+### Coming from "Exo Pool"?
 
-In v0.3.0 the integration was renamed from **Exo Pool** (`exo_pool`) to **Zodiac iAqualink Exo** (`zodiac_exo`), because another integration already uses the old name. Home Assistant can't update an integration whose domain changed, so you reinstall it once. Your entity settings are restored automatically:
-
-1. **Settings → Devices & Services → Exo Pool → ⋮ → Delete.** Home Assistant keeps the settings of the deleted entities for 30 days, so they can be restored.
-2. In the Marketplace (or HACS), **uninstall Exo Pool**, then **install Zodiac iAqualink Exo** (same repository, new name), and restart Home Assistant.
-3. **Add Integration → Zodiac iAqualink Exo** and log in with your iAqualink account.
-
-What's restored: entity IDs (including ones you changed yourself), history, entity names, icons, areas, labels, and hidden or disabled entities, plus the device's area and name. Older Home Assistant versions (early 2025) restore only the entity IDs and history.
-
-What you need to redo:
-- Automations or scripts that call `exo_pool.*` actions need `zodiac_exo.*`, for example `zodiac_exo.set_schedule`.
-- The device gets a new internal ID, so automation steps that pick the **device** (device triggers, conditions or actions) must be selected again. Steps that use entities keep working.
-- The REST poll interval option, if you changed it.
+Up to v0.2.x this integration was called **Exo Pool** (`exo_pool`). It was renamed because another integration already uses that name. Zodiac iAqualink Exo is installed and set up as a new integration: delete and uninstall Exo Pool, then install this one and set it up as described above. Settings from Exo Pool are not carried over. Actions are now called `zodiac_exo.*`.
 
 ---
 
