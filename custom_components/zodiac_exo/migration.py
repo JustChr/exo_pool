@@ -179,6 +179,17 @@ def async_adopt_deleted_entities(hass: HomeAssistant, entry: ConfigEntry) -> str
             continue
         del deleted[key]
         deleted[new_key] = attr.evolve(record, platform=DOMAIN, unique_id=unique_id)
+        # Register it now under its old entity ID. Newer Home Assistant
+        # versions restore all settings from the deleted record here; older
+        # ones only restore the registry ID, so the suggested object ID is what
+        # keeps the entity ID (and with it history and automations) there.
+        ent_reg.async_get_or_create(
+            key[0],
+            DOMAIN,
+            unique_id,
+            config_entry=entry,
+            suggested_object_id=record.entity_id.split(".", 1)[1],
+        )
     ent_reg.async_schedule_save()
     _LOGGER.info(
         "Restoring the settings of %d entities from the removed Exo Pool setup",
