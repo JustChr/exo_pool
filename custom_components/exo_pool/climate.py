@@ -1,23 +1,33 @@
+"""Climate platform for Exo Pool (heat pump on Aux 2)."""
 from __future__ import annotations
 
-from homeassistant.components.climate import ClimateEntity
-from homeassistant.components.climate.const import (
+import logging
+from typing import Any
+
+from homeassistant.components.climate import (
+    ClimateEntity,
+    ClimateEntityFeature,
     HVACAction,
     HVACMode,
-    ClimateEntityFeature,
 )
-from homeassistant.const import UnitOfTemperature, ATTR_TEMPERATURE
-from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api import get_coordinator, set_heating_value, set_pool_value
-from .const import DOMAIN, device_info as _device_info, swc0
-
-import logging
+from .const import device_info as _device_info, swc0
 
 _LOGGER = logging.getLogger(__name__)
+
+AUX2_MODE_HEAT = 3
+
+# Home Assistant 2026.11 introduced the native_* temperature API on
+# ClimateEntity and deprecated temperature_unit / current_temperature /
+# target_temperature for entities. Older versions only know the legacy names.
+_HAS_NATIVE_TEMPERATURE_API = hasattr(ClimateEntity, "native_temperature_unit")
 
 
 async def async_setup_entry(
@@ -28,88 +38,113 @@ async def async_setup_entry(
     created = False
 
     def _should_create() -> bool:
-        return swc0(coordinator.data).get("aux_2", {}).get("mode") == 3
+        return swc0(coordinator.data).get("aux_2", {}).get("mode") == AUX2_MODE_HEAT
 
-    # Create immediately if present
-    if _should_create():
+    @callback
+    def _maybe_create() -> None:
+        nonlocal created
+        if created or not _should_create():
+            return
         async_add_entities([ExoHeatPumpClimate(entry, coordinator)])
         created = True
-    else:
-        _LOGGER.debug("Aux 2 not in heat mode; climate entity will be created when detected")
 
-    # Discover creation later if aux_2 switches to heat mode
-    def _maybe_create_later():
-        nonlocal created
-        if created:
-            return
-        if _should_create():
-            async_add_entities([ExoHeatPumpClimate(entry, coordinator)])
-            created = True
-
-    coordinator.async_add_listener(_maybe_create_later)
+    _maybe_create()
+    if not created:
+        _LOGGER.debug(
+            "Aux 2 not in heat mode; climate entity will be created when detected"
+        )
+    # Aux 2 may be switched to heat mode later
+    entry.async_on_unload(coordinator.async_add_listener(_maybe_create))
 
 
 class ExoHeatPumpClimate(CoordinatorEntity, ClimateEntity):
-    """Heat Pump climate entity backed by top-level 'heating' data."""
+    """Heat pump climate entity backed by top-level 'heating' data."""
 
-    _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT]
-    _attr_supported_features = ClimateEntityFeature.TARGET_TEMPERATURE
-    _attr_temperature_unit = UnitOfTemperature.CELSIUS
+    _attr_has_entity_name = True
+    _attr_name = "Heat Pump"
     _attr_icon = "mdi:heat-pump"
+    _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT]
+    _attr_supported_features = (
+        ClimateEntityFeature.TARGET_TEMPERATURE
+        | ClimateEntityFeature.TURN_ON
+        | ClimateEntityFeature.TURN_OFF
+    )
+    _attr_native_temperature_unit = UnitOfTemperature.CELSIUS
+    _attr_target_temperature_step = 1.0
 
-    def __init__(self, entry: ConfigEntry, coordinator):
+    def __init__(self, entry: ConfigEntry, coordinator) -> None:
         super().__init__(coordinator)
         self._entry = entry
-        self._attr_name = "Heat Pump"
         self._attr_unique_id = f"{entry.entry_id}_heat_pump"
         self._attr_device_info = _device_info(entry)
 
-    # Availability follows Aux 2 remaining in heat mode
+    # -- data helpers ------------------------------------------------------
+
+    @property
+    def _heating(self) -> dict:
+        return (self.coordinator.data or {}).get("heating") or {}
+
+    @property
+    def _aux2(self) -> dict:
+        return swc0(self.coordinator.data).get("aux_2") or {}
+
+    # -- state -------------------------------------------------------------
+
     @property
     def available(self) -> bool:
-        data = self.coordinator.data or {}
-        return swc0(data).get("aux_2", {}).get("mode") == 3 and data.get("heating") is not None
+        """Available while Aux 2 stays in heat mode and heating data exists."""
+        return (
+            super().available
+            and self._aux2.get("mode") == AUX2_MODE_HEAT
+            and (self.coordinator.data or {}).get("heating") is not None
+        )
 
     @property
-    def temperature_unit(self) -> str:
-        return UnitOfTemperature.CELSIUS
-
-    @property
-    def current_temperature(self) -> float | None:
+    def native_current_temperature(self) -> float | None:
         return swc0(self.coordinator.data).get("sns_3", {}).get("value")
 
     @property
-    def target_temperature(self) -> float | None:
-        return (self.coordinator.data or {}).get("heating", {}).get("sp")
+    def native_target_temperature(self) -> float | None:
+        return self._heating.get("sp")
+
+    if not _HAS_NATIVE_TEMPERATURE_API:
+        # Legacy API for Home Assistant < 2026.11. Never defined on newer
+        # versions, so no deprecation warnings are raised there.
+        @property
+        def temperature_unit(self) -> str:
+            return UnitOfTemperature.CELSIUS
+
+        @property
+        def current_temperature(self) -> float | None:
+            return self.native_current_temperature
+
+        @property
+        def target_temperature(self) -> float | None:
+            return self.native_target_temperature
 
     @property
     def min_temp(self) -> float:
-        return float((self.coordinator.data or {}).get("heating", {}).get("sp_min", 10))
+        return float(self._heating.get("sp_min", 10))
 
     @property
     def max_temp(self) -> float:
-        return float((self.coordinator.data or {}).get("heating", {}).get("sp_max", 40))
+        return float(self._heating.get("sp_max", 40))
 
     @property
     def hvac_mode(self) -> HVACMode:
-        return HVACMode.HEAT if swc0(self.coordinator.data).get("aux_2", {}).get("state") == 1 else HVACMode.OFF
+        return HVACMode.HEAT if self._aux2.get("state") == 1 else HVACMode.OFF
 
     @property
-    def hvac_action(self) -> HVACAction | None:
-        data = self.coordinator.data or {}
-        aux2 = swc0(data).get("aux_2", {})
-        if aux2.get("state") == 1:
+    def hvac_action(self) -> HVACAction:
+        if self._aux2.get("state") == 1 or self._heating.get("state") == 2:
             return HVACAction.HEATING
-        state = (data.get("heating", {}) or {}).get("state")
-        return HVACAction.HEATING if state == 2 else HVACAction.IDLE
+        return HVACAction.OFF
 
     @property
-    def extra_state_attributes(self) -> dict:
-        data = self.coordinator.data or {}
-        heating = data.get("heating", {}) or {}
-        aux2 = swc0(data).get("aux_2", {})
-        # Expose all other heating fields as attributes for visibility
-        attrs: dict = {
+    def extra_state_attributes(self) -> dict[str, Any]:
+        heating = self._heating
+        aux2 = self._aux2
+        return {
             "aux2_mode": aux2.get("mode"),
             "aux2_type": aux2.get("type"),
             "aux2_state": aux2.get("state"),
@@ -121,28 +156,36 @@ class ExoHeatPumpClimate(CoordinatorEntity, ClimateEntity):
             "vsp_rpm_list": heating.get("vsp_rpm_list"),
             "priority_enabled": heating.get("priority_enabled"),
         }
-        return attrs
 
-    async def async_set_temperature(self, **kwargs) -> None:
+    # -- commands ----------------------------------------------------------
+
+    async def async_set_temperature(self, **kwargs: Any) -> None:
         temp = kwargs.get(ATTR_TEMPERATURE)
         if temp is None:
             return
-        # Clamp to reported range if available
-        min_t = self.min_temp
-        max_t = self.max_temp
         try:
             value = int(round(float(temp)))
-        except (TypeError, ValueError):
-            _LOGGER.debug("Invalid temperature value: %s", temp)
-            return
-        value = max(int(min_t), min(int(max_t), value))
-        await set_heating_value(self.hass, self._entry, "sp", value)
+        except (TypeError, ValueError) as err:
+            raise HomeAssistantError(f"Invalid temperature: {temp}") from err
+        value = max(int(self.min_temp), min(int(self.max_temp), value))
+        try:
+            await set_heating_value(self.hass, self._entry, "sp", value)
+        except HomeAssistantError:
+            raise
+        except Exception as err:
+            raise HomeAssistantError(f"Heat Pump: {err}") from err
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
-        if hvac_mode == HVACMode.HEAT:
-            await set_pool_value(self.hass, self._entry, "aux_2.state", 1)
-        elif hvac_mode == HVACMode.OFF:
-            await set_pool_value(self.hass, self._entry, "aux_2.state", 0)
+        if hvac_mode not in (HVACMode.HEAT, HVACMode.OFF):
+            raise HomeAssistantError(f"Unsupported HVAC mode: {hvac_mode}")
+        try:
+            await set_pool_value(
+                self.hass, self._entry, "aux_2.state", 1 if hvac_mode == HVACMode.HEAT else 0
+            )
+        except HomeAssistantError:
+            raise
+        except Exception as err:
+            raise HomeAssistantError(f"Heat Pump: {err}") from err
 
     async def async_turn_on(self) -> None:
         await self.async_set_hvac_mode(HVACMode.HEAT)

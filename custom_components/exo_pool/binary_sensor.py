@@ -14,8 +14,7 @@ from .api import (
     get_coordinator,
     get_auth_state,
     get_mqtt_connected,
-    ERROR_CODES,
-    DOMAIN,
+    error_message,
 )
 from .const import device_info as _device_info, swc0
 from homeassistant.const import EntityCategory
@@ -69,11 +68,13 @@ async def async_setup_entry(
             _LOGGER.debug("Discovered %s new schedules", len(new_entities))
             async_add_entities(new_entities)
 
-    coordinator.async_add_listener(_check_new_schedules)
+    entry.async_on_unload(coordinator.async_add_listener(_check_new_schedules))
 
 
 class FilterPumpBinarySensor(CoordinatorEntity, BinarySensorEntity):
     """Representation of a filter pump binary sensor."""
+
+    _attr_has_entity_name = True
 
     _attr_device_class = BinarySensorDeviceClass.RUNNING
     _attr_icon = "mdi:pump"
@@ -96,7 +97,7 @@ class FilterPumpBinarySensor(CoordinatorEntity, BinarySensorEntity):
             if (
                 isinstance(value, dict)
                 and value.get("endpoint")
-                and "vsp" in value.get("endpoint")
+                and "vsp" in str(value.get("endpoint"))
                 and value.get("enabled") == 1
                 and value.get("active") == 1
             ):
@@ -110,6 +111,8 @@ class FilterPumpBinarySensor(CoordinatorEntity, BinarySensorEntity):
 
 class ErrorStateBinarySensor(CoordinatorEntity, BinarySensorEntity):
     """Representation of an error state binary sensor."""
+
+    _attr_has_entity_name = True
 
     _attr_device_class = BinarySensorDeviceClass.PROBLEM
     _attr_icon = "mdi:alert"
@@ -129,12 +132,7 @@ class ErrorStateBinarySensor(CoordinatorEntity, BinarySensorEntity):
     @property
     def extra_state_attributes(self):
         code = swc0(self.coordinator.data).get("error_code")
-        return {
-            "error_code": code,
-            "error_message": ERROR_CODES.get(
-                int(code) if code is not None else 0, "Unknown Error"
-            ),
-        }
+        return {"error_code": code, "error_message": error_message(code)}
 
     @property
     def available(self):
@@ -143,6 +141,8 @@ class ErrorStateBinarySensor(CoordinatorEntity, BinarySensorEntity):
 
 class SaltWaterChlorinatorBinarySensor(CoordinatorEntity, BinarySensorEntity):
     """Representation of a salt water chlorinator binary sensor."""
+
+    _attr_has_entity_name = True
 
     _attr_device_class = BinarySensorDeviceClass.RUNNING
     _attr_icon = "mdi:water-plus"
@@ -165,6 +165,8 @@ class SaltWaterChlorinatorBinarySensor(CoordinatorEntity, BinarySensorEntity):
 
 class AuthenticationStatusBinarySensor(CoordinatorEntity, BinarySensorEntity):
     """Representation of an authentication status binary sensor."""
+
+    _attr_has_entity_name = True
 
     _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
     _attr_icon = "mdi:lock-check"
@@ -195,6 +197,8 @@ class AuthenticationStatusBinarySensor(CoordinatorEntity, BinarySensorEntity):
 class ConnectedBinarySensor(CoordinatorEntity, BinarySensorEntity):
     """Binary sensor indicating whether the MQTT client is connected to AWS IoT."""
 
+    _attr_has_entity_name = True
+
     _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
     _attr_icon = "mdi:signal"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
@@ -217,6 +221,8 @@ class ConnectedBinarySensor(CoordinatorEntity, BinarySensorEntity):
 
 class AwsConnectivityBinarySensor(CoordinatorEntity, BinarySensorEntity):
     """Binary sensor indicating whether the pool device is online."""
+
+    _attr_has_entity_name = True
 
     _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
     _attr_icon = "mdi:cloud-check"
@@ -248,6 +254,8 @@ class AwsConnectivityBinarySensor(CoordinatorEntity, BinarySensorEntity):
 
 class ScheduleBinarySensor(CoordinatorEntity, BinarySensorEntity):
     """Binary sensor representing a single schedule's active state."""
+
+    _attr_has_entity_name = True
 
     def __init__(self, entry, coordinator, schedule_key: str) -> None:
         super().__init__(coordinator)

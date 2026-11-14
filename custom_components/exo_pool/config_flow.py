@@ -1,12 +1,25 @@
+"""Config flow for Exo Pool."""
+from __future__ import annotations
+
+from collections.abc import Mapping
 import logging
-import urllib.parse
+from typing import Any
+
+import aiohttp
 import voluptuous as vol
-from homeassistant import config_entries
-from homeassistant.data_entry_flow import FlowResult
+
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlow,
+)
+from homeassistant.core import callback
 from homeassistant.helpers import aiohttp_client
 
-from .const import DOMAIN
-from .api import REFRESH_OPTION_KEY, REFRESH_DEFAULT, REFRESH_MIN, REFRESH_MAX
+from .api import REFRESH_DEFAULT, REFRESH_MAX, REFRESH_MIN, REFRESH_OPTION_KEY
+from .auth import async_login
+from .const import API_KEY_R, DEVICES_URL, DOMAIN, redact
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -17,187 +30,197 @@ LOGIN_SCHEMA = vol.Schema(
     }
 )
 
-LOGIN_URL = "https://prod.zodiac-io.com/users/v1/login"
-API_KEY_PROD = "EOOEMOW4YR6QNB11"
-API_KEY_R = "EOOEMOW4YR6QNB07"
+
+class CannotConnect(Exception):
+    """Error talking to the API."""
 
 
-class ExoPoolOptionsFlow(config_entries.OptionsFlow):
+class InvalidAuth(Exception):
+    """Credentials were rejected."""
+
+
+async def _async_authenticate(hass, email: str, password: str) -> dict:
+    """Log in and return the parsed login response."""
+    session = aiohttp_client.async_get_clientsession(hass)
+    try:
+        status, result, _ = await async_login(session, email, password)
+    except aiohttp.ClientError as err:
+        raise CannotConnect from err
+    _LOGGER.debug("Login response status: %s, data: %s", status, redact(result))
+    if status in (400, 401, 403):
+        raise InvalidAuth
+    if (
+        status != 200
+        or result is None
+        or "authentication_token" not in result
+        or not (result.get("userPoolOAuth") or {}).get("IdToken")
+    ):
+        raise CannotConnect
+    return result
+
+
+class ExoPoolOptionsFlow(OptionsFlow):
     """Options flow for Exo Pool (REST poll interval)."""
 
-    async def async_step_init(self, user_input=None) -> FlowResult:
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         if user_input is not None:
             return self.async_create_entry(data=user_input)
         current = self.config_entry.options.get(REFRESH_OPTION_KEY, REFRESH_DEFAULT)
-        schema = vol.Schema({
-            vol.Optional(REFRESH_OPTION_KEY, default=int(current)): vol.All(
-                vol.Coerce(int), vol.Range(min=REFRESH_MIN, max=REFRESH_MAX)
-            )
-        })
+        schema = vol.Schema(
+            {
+                vol.Optional(REFRESH_OPTION_KEY, default=int(current)): vol.All(
+                    vol.Coerce(int), vol.Range(min=REFRESH_MIN, max=REFRESH_MAX)
+                )
+            }
+        )
         return self.async_show_form(step_id="init", data_schema=schema)
 
 
-class ExoPoolConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+class ExoPoolConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Exo Pool."""
 
     VERSION = 1
 
+    def __init__(self) -> None:
+        self._email: str | None = None
+        self._password: str | None = None
+        self._login: dict = {}
+        self._systems: dict[str, str] = {}
+
     @staticmethod
-    def async_get_options_flow(config_entry):
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
         return ExoPoolOptionsFlow()
 
-    def __init__(self):
-        self.email = None
-        self.password = None
-        self.auth_token = None
-        self.id_token = None
-        self.user_id = None
-
-    async def async_step_user(self, user_input=None) -> FlowResult:
-        """Handle the initial step of the config flow."""
-        errors = {}
-
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Ask for iAqualink credentials."""
+        errors: dict[str, str] = {}
         if user_input is not None:
-            self.email = user_input["email"]
-            self.password = user_input["password"]
-            session = aiohttp_client.async_get_clientsession(self.hass)
-
-            payload = {
-                "api_key": API_KEY_PROD,
-                "email": self.email,
-                "password": self.password,
-            }
-
             try:
-                async with session.post(
-                    LOGIN_URL,
-                    json=payload,
-                    headers={
-                        "Content-Type": "application/json",
-                        "User-Agent": "okhttp/3.14.7",
-                    },
-                ) as resp:
-                    _LOGGER.debug("Login raw response status: %s", resp.status)
-                    _LOGGER.debug("Login raw response headers: %s", resp.headers)
-                    raw_response = await resp.text()
-                    _LOGGER.debug("Login raw response text: %s", raw_response)
-
-                    # Parse JSON response
-                    try:
-                        result = await resp.json()
-                    except Exception as e:
-                        _LOGGER.error(
-                            "Failed to parse login response JSON: %s, Raw: %s",
-                            e,
-                            raw_response,
-                        )
-                        errors["base"] = "unknown"
-                        return self.async_show_form(
-                            step_id="user",
-                            data_schema=LOGIN_SCHEMA,
-                            errors=errors,
-                        )
-
-                    _LOGGER.debug("Login response parsed: %s", result)
-                    _LOGGER.debug(
-                        "Condition check: status=%s, auth_token=%s, userPoolOAuth=%s",
-                        resp.status == 200,
-                        "authentication_token" in result,
-                        "userPoolOAuth" in result,
-                    )
-
-                    if (
-                        resp.status == 200
-                        and "authentication_token" in result
-                        and "userPoolOAuth" in result
-                    ):
-                        self.auth_token = result["authentication_token"]
-                        self.id_token = result["userPoolOAuth"].get("IdToken")
-                        self.user_id = result["id"]
-                        if not self.id_token:
-                            _LOGGER.error(
-                                "No userPoolOAuth.IdToken in response: %s", result
-                            )
-                            errors["base"] = "auth_failed"
-                        else:
-                            _LOGGER.debug(
-                                "Authentication successful, proceeding to select_system"
-                            )
-                            return await self.async_step_select_system()
-                    else:
-                        _LOGGER.error(
-                            "Login response invalid: Status=%s, Result=%s",
-                            resp.status,
-                            result,
-                        )
-                        errors["base"] = "auth_failed"
-
-            except Exception as e:
-                _LOGGER.exception("Unexpected error during login: %s", e)
+                self._login = await _async_authenticate(
+                    self.hass, user_input["email"], user_input["password"]
+                )
+            except InvalidAuth:
+                errors["base"] = "auth_failed"
+            except CannotConnect:
+                errors["base"] = "cannot_connect"
+            except Exception:  # noqa: BLE001
+                _LOGGER.exception("Unexpected error during login")
                 errors["base"] = "unknown"
+            else:
+                self._email = user_input["email"]
+                self._password = user_input["password"]
+                return await self.async_step_select_system()
 
         return self.async_show_form(
             step_id="user",
-            data_schema=LOGIN_SCHEMA,
+            data_schema=self.add_suggested_values_to_schema(LOGIN_SCHEMA, user_input),
             errors=errors,
         )
 
-    async def async_step_select_system(self, user_input=None) -> FlowResult:
-        """Handle the system selection step of the config flow."""
-        errors = {}
+    async def _async_fetch_systems(self) -> dict[str, str]:
+        """Return {label: serial} for all eXO devices on the account."""
         session = aiohttp_client.async_get_clientsession(self.hass)
-
         params = {
             "api_key": API_KEY_R,
-            "authentication_token": self.auth_token,
-            "user_id": self.user_id,
+            "authentication_token": self._login["authentication_token"],
+            "user_id": self._login.get("id"),
             "timestamp": 1663228298244,  # Required dummy value
         }
+        async with session.get(DEVICES_URL, params=params) as resp:
+            result = await resp.json(content_type=None)
+        if not isinstance(result, list):
+            _LOGGER.debug("Unexpected device list response: %s", type(result).__name__)
+            return {}
+        return {
+            f"{s.get('serial_number')} ({s.get('name') or 'Unnamed'})": s["serial_number"]
+            for s in result
+            if isinstance(s, dict)
+            and s.get("device_type") == "exo"
+            and s.get("serial_number")
+        }
 
-        system_url = (
-            f"https://r-api.iaqualink.net/devices.json?{urllib.parse.urlencode(params)}"
-        )
-
-        try:
-            async with session.get(system_url) as resp:
-                result = await resp.json()
-                _LOGGER.debug("System discovery result: %s", result)
-
-            if not isinstance(result, list) or not result:
-                errors["base"] = "no_systems"
-                return self.async_show_form(step_id="select_system", errors=errors)
-
-            self.systems = {
-                f"{s.get('serial_number')} ({s.get('name', 'Unnamed')})": s.get(
-                    "serial_number"
-                )
-                for s in result
-                if s.get("device_type") == "exo"
+    async def async_step_select_system(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Let the user pick which eXO system to add."""
+        if user_input is not None and user_input.get("system") in self._systems:
+            serial_number = self._systems[user_input["system"]]
+            await self.async_set_unique_id(serial_number)
+            self._abort_if_unique_id_configured()
+            oauth = self._login.get("userPoolOAuth") or {}
+            data = {
+                "email": self._email,
+                "password": self._password,
+                "auth_token": self._login["authentication_token"],
+                "id_token": oauth.get("IdToken"),
+                "user_id": self._login.get("id"),
+                "serial_number": serial_number,
             }
-
-            if user_input:
-                serial_number = self.systems[user_input["system"]]
-                return self.async_create_entry(
-                    title=f"Exo Pool ({serial_number})",
-                    data={
-                        "email": self.email,
-                        "password": self.password,
-                        "auth_token": self.auth_token,
-                        "id_token": self.id_token,
-                        "user_id": self.user_id,
-                        "serial_number": serial_number,
-                    },
-                )
-
-            return self.async_show_form(
-                step_id="select_system",
-                data_schema=vol.Schema(
-                    {vol.Required("system"): vol.In(list(self.systems.keys()))}
-                ),
-                errors={},
+            if refresh_token := oauth.get("RefreshToken"):
+                data["refresh_token"] = refresh_token
+            return self.async_create_entry(
+                title=f"Exo Pool ({serial_number})", data=data
             )
 
-        except Exception:
-            _LOGGER.exception("Error during system selection")
-            errors["base"] = "unknown"
-            return self.async_show_form(step_id="select_system", errors=errors)
+        try:
+            self._systems = await self._async_fetch_systems()
+        except (aiohttp.ClientError, TimeoutError, ValueError):
+            _LOGGER.debug("Failed to fetch device list", exc_info=True)
+            return self.async_abort(reason="cannot_connect")
+
+        if not self._systems:
+            return self.async_abort(reason="no_systems")
+
+        return self.async_show_form(
+            step_id="select_system",
+            data_schema=vol.Schema(
+                {vol.Required("system"): vol.In(list(self._systems))}
+            ),
+        )
+
+    async def async_step_reauth(
+        self, entry_data: Mapping[str, Any]
+    ) -> ConfigFlowResult:
+        """Start re-authentication when the stored credentials stop working."""
+        self._email = entry_data.get("email")
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Ask for the (new) password."""
+        errors: dict[str, str] = {}
+        entry = self._get_reauth_entry()
+        if user_input is not None:
+            email = user_input["email"]
+            try:
+                await _async_authenticate(self.hass, email, user_input["password"])
+            except InvalidAuth:
+                errors["base"] = "auth_failed"
+            except CannotConnect:
+                errors["base"] = "cannot_connect"
+            except Exception:  # noqa: BLE001
+                _LOGGER.exception("Unexpected error during re-authentication")
+                errors["base"] = "unknown"
+            else:
+                # Drop cached tokens so the integration logs in fresh.
+                data = {
+                    k: v
+                    for k, v in entry.data.items()
+                    if k not in ("id_token", "refresh_token", "auth_token", "expires_at")
+                }
+                data.update(email=email, password=user_input["password"])
+                return self.async_update_reload_and_abort(entry, data=data)
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=self.add_suggested_values_to_schema(
+                LOGIN_SCHEMA, {"email": self._email or entry.data.get("email")}
+            ),
+            errors=errors,
+        )

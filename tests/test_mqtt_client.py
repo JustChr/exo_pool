@@ -379,8 +379,9 @@ class TestReconnection:
             session_present=False,
         )
 
-        # Should re-subscribe to topics
-        assert mock_mqtt_connection.subscribe.call_count > initial_sub_count
+        # Should re-subscribe (non-blocking) instead of blocking subscribe calls
+        mock_mqtt_connection.resubscribe_existing_topics.assert_called_once()
+        assert mock_mqtt_connection.subscribe.call_count == initial_sub_count
 
         # Should re-request shadow
         new_pub_calls = mock_mqtt_connection.publish.call_args_list[
@@ -418,10 +419,14 @@ class TestReconnection:
         client.set_reconnect_failed_callback(reconnect_cb)
         client.connect(SAMPLE_CREDENTIALS)
 
-        # Make subscribe fail on reconnect (simulating expired credentials)
-        sub_future = MagicMock()
-        sub_future.result.side_effect = Exception("Forbidden")
-        mock_mqtt_connection.subscribe.return_value = (sub_future, 1)
+        # Make resubscribe fail on reconnect (simulating expired credentials)
+        resub_future = MagicMock()
+        resub_future.result.side_effect = Exception("Forbidden")
+        resub_future.add_done_callback.side_effect = lambda fn: fn(resub_future)
+        mock_mqtt_connection.resubscribe_existing_topics.return_value = (
+            resub_future,
+            2,
+        )
 
         client._on_connection_interrupted(
             connection=mock_mqtt_connection, error=Exception("blip")
@@ -442,6 +447,13 @@ class TestHeartbeat:
     def test_connect_starts_heartbeat(self, build_client, mock_event_loop):
         client = build_client()
         client.connect(SAMPLE_CREDENTIALS)
+
+        # The timer must be created on the event loop, not the calling thread
+        mock_event_loop.call_later.assert_not_called()
+        mock_event_loop.call_soon_threadsafe.assert_called_with(
+            client._start_heartbeat
+        )
+        client._start_heartbeat()
 
         # Should have scheduled a call_later on the event loop
         mock_event_loop.call_later.assert_called()
@@ -476,6 +488,7 @@ class TestHeartbeat:
     ):
         client = build_client()
         client.connect(SAMPLE_CREDENTIALS)
+        client._start_heartbeat()
         initial_call_count = mock_event_loop.call_later.call_count
 
         client._heartbeat_tick()
@@ -513,9 +526,26 @@ class TestHeartbeat:
 
         client = build_client()
         client.connect(SAMPLE_CREDENTIALS)
+        client._start_heartbeat()
         client.disconnect()
 
+        # Cancellation is bridged to the event loop as well
+        mock_event_loop.call_soon_threadsafe.assert_called_with(
+            client._stop_heartbeat
+        )
+        client._stop_heartbeat()
         mock_handle.cancel.assert_called()
+
+    def test_resumed_with_session_present_skips_resubscribe(
+        self, build_client, mock_mqtt_connection
+    ):
+        client = build_client()
+        client.connect(SAMPLE_CREDENTIALS)
+        client._on_connection_resumed(
+            connection=mock_mqtt_connection, return_code=0, session_present=True
+        )
+        mock_mqtt_connection.resubscribe_existing_topics.assert_not_called()
+        assert client.connected is True
 
 
 class TestBuildConnection:

@@ -12,20 +12,35 @@ import pytest
 # without a full HA installation. mqtt_client.py itself has no HA deps,
 # but importing via custom_components.exo_pool triggers __init__.py which does.
 # We pre-register the mqtt_client module directly to short-circuit that.
+#
+# When Home Assistant (pytest-homeassistant-custom-component) is installed the
+# real package is importable and the HA-based tests in test_setup.py run too.
 _REPO_ROOT = pathlib.Path(__file__).parent.parent
-_mqtt_spec = importlib.util.spec_from_file_location(
-    "custom_components.exo_pool.mqtt_client",
-    _REPO_ROOT / "custom_components" / "exo_pool" / "mqtt_client.py",
-)
-_mqtt_mod = importlib.util.module_from_spec(_mqtt_spec)
 
-# Ensure parent packages exist in sys.modules
-for pkg in ("custom_components", "custom_components.exo_pool"):
-    if pkg not in sys.modules:
-        sys.modules[pkg] = types.ModuleType(pkg)
+try:
+    import pytest_homeassistant_custom_component.plugins  # noqa: F401
 
-sys.modules["custom_components.exo_pool.mqtt_client"] = _mqtt_mod
-_mqtt_spec.loader.exec_module(_mqtt_mod)
+    HAS_HA = True
+except Exception:  # noqa: BLE001 - not installed, or unsupported OS (Windows)
+    HAS_HA = False
+
+if HAS_HA:
+    if str(_REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(_REPO_ROOT))
+else:
+    _mqtt_spec = importlib.util.spec_from_file_location(
+        "custom_components.exo_pool.mqtt_client",
+        _REPO_ROOT / "custom_components" / "exo_pool" / "mqtt_client.py",
+    )
+    _mqtt_mod = importlib.util.module_from_spec(_mqtt_spec)
+
+    # Ensure parent packages exist in sys.modules
+    for pkg in ("custom_components", "custom_components.exo_pool"):
+        if pkg not in sys.modules:
+            sys.modules[pkg] = types.ModuleType(pkg)
+
+    sys.modules["custom_components.exo_pool.mqtt_client"] = _mqtt_mod
+    _mqtt_spec.loader.exec_module(_mqtt_mod)
 
 
 SAMPLE_CREDENTIALS = {
@@ -63,6 +78,15 @@ def mock_mqtt_connection():
     pub_future = MagicMock()
     pub_future.result.return_value = None
     conn.publish.return_value = (pub_future, 1)
+
+    # resubscribe_existing_topics() completes immediately (callback invoked inline)
+    resub_future = MagicMock()
+    resub_future.result.return_value = {
+        "packet_id": 2,
+        "topics": [("t1", 1), ("t2", 1)],
+    }
+    resub_future.add_done_callback.side_effect = lambda fn: fn(resub_future)
+    conn.resubscribe_existing_topics.return_value = (resub_future, 2)
 
     return conn
 

@@ -17,6 +17,17 @@ ACTION_DISABLE_SCHEDULE = "disable_schedule"
 
 ACTION_TYPES: set[str] = {ACTION_SET_SCHEDULE, ACTION_DISABLE_SCHEDULE}
 
+# Required by Home Assistant to validate device actions in automations.
+ACTION_SCHEMA = cv.DEVICE_ACTION_BASE_SCHEMA.extend(
+    {
+        vol.Required(CONF_TYPE): vol.In(ACTION_TYPES),
+        vol.Required("schedule"): cv.string,
+        vol.Optional("start"): cv.time,
+        vol.Optional("end"): cv.time,
+        vol.Optional("rpm"): vol.All(vol.Coerce(int), vol.Range(min=0, max=4000)),
+    }
+)
+
 
 def _device_is_exo(hass: HomeAssistant, device_id: str) -> bool:
     dev_reg = dr.async_get(hass)

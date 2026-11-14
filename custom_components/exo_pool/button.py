@@ -23,6 +23,8 @@ async def async_setup_entry(
 class ExoPoolRefreshButton(CoordinatorEntity, ButtonEntity):
     """Button to force a data refresh."""
 
+    _attr_has_entity_name = True
+
     _attr_icon = "mdi:refresh"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 

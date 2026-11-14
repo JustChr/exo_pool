@@ -12,6 +12,8 @@ Control and monitor your **Zodiac iAqualink Exo** pool system directly from Home
 
 **Supported devices:** Zodiac iAqualink **Exo** series (European market).
 
+**Home Assistant:** 2025.1 or newer.
+
 > Not compatible with other iAqualink hardware (e.g. iQ20, iAqualink 3.0). Use the built-in [iAqualink integration](https://www.home-assistant.io/integrations/iaqualink/) for those.
 
 Confirmed working:
@@ -76,7 +78,9 @@ Have success with another model? [Open a discussion!](https://github.com/JustChr
 After installation, the integration connects automatically using your Zodiac credentials. No manual MQTT or API setup is required.
 
 **REST poll interval** (fallback when the real-time connection is unavailable):
-Go to **Settings → Devices & Services → Exo Pool → Configure** and set the interval (300–3600 seconds). Under normal operation this rarely fires.
+Go to **Settings → Devices & Services → Exo Pool → Configure** and set the interval (300–3600 seconds). While the real-time (MQTT) connection is up, a 1-hour safety poll is used instead, so under normal operation this rarely fires.
+
+**Changed your iAqualink password?** Home Assistant shows a *Re-authenticate* notification for Exo Pool. Click it and enter the new password — no need to remove and re-add the integration.
 
 ---
 

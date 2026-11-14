@@ -10,8 +10,11 @@ from typing import Callable
 import aiohttp
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import aiohttp_client
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+
+from .const import USER_AGENT
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -84,6 +87,19 @@ class _WriteManager:
         self._order: list[str] = []
         self._worker_task: asyncio.Task | None = None
         self._lock = asyncio.Lock()
+
+    def cancel(self) -> None:
+        """Stop the worker and fail any writes still waiting (entry unload)."""
+        if self._worker_task is not None and not self._worker_task.done():
+            self._worker_task.cancel()
+        for item in self._pending.values():
+            for future in item.futures:
+                if not future.done():
+                    future.set_exception(
+                        HomeAssistantError("Exo Pool integration was unloaded")
+                    )
+        self._pending.clear()
+        self._order.clear()
 
     async def enqueue(self, item: _WriteItem) -> None:
         from .api import _get_entry_store, NO_READ_WINDOW_SECONDS
@@ -205,7 +221,7 @@ async def _execute_write(
     elif item.kind == "schedule":
         desired = {"schedules": item.payload}
     else:
-        raise Exception(f"Unknown write kind: {item.kind}")
+        raise HomeAssistantError(f"Unknown write kind: {item.kind}")
 
     store = _get_entry_store(hass, entry)
     mqtt_client = store.get("mqtt_client")
@@ -232,9 +248,6 @@ async def _execute_write_rest(
     desired: dict,
 ) -> None:
     from .api import (
-        _get_entry_store,
-        _async_rate_limit,
-        _log_response_headers,
         _refresh_authentication,
         _set_cooldown,
         _get_configured_interval_seconds,
@@ -243,12 +256,12 @@ async def _execute_write_rest(
     serial_number = entry.data["serial_number"]
     id_token = entry.data.get("id_token")
     if not id_token:
-        raise Exception(f"No id_token available for write {item.key}")
+        raise HomeAssistantError(f"No id_token available for write {item.key}")
 
     payload = {"state": {"desired": desired}}
     headers = {
         "Content-Type": "application/json; charset=utf-8",
-        "User-Agent": "okhttp/3.14.7",
+        "User-Agent": USER_AGENT,
         "Authorization": f"Bearer {id_token}",
     }
     url = DATA_URL_TEMPLATE.format(serial_number)
@@ -265,7 +278,7 @@ async def _execute_write_rest(
         await _refresh_authentication(hass, entry, session)
         id_token = entry.data.get("id_token")
         if not id_token:
-            raise Exception(f"No id_token available after refresh for write {item.key}")
+            raise HomeAssistantError(f"No id_token available after refresh for write {item.key}")
         headers["Authorization"] = f"Bearer {id_token}"
         response_status, response_text = await _post_write(
             hass, entry, session, url, payload, headers, item.key
@@ -273,12 +286,12 @@ async def _execute_write_rest(
     if response_status == 429:
         _LOGGER.warning("Rate limited during write %s: %s", item.key, response_text)
         _set_cooldown(hass, entry, _get_configured_interval_seconds(entry), reason="write_429")
-        raise Exception(f"Rate limited for write {item.key}: {response_text}")
+        raise HomeAssistantError(f"Rate limited for write {item.key}: {response_text}")
     if response_status != 200:
         _LOGGER.error(
             "Write failed for %s: %s (Status: %s)", item.key, response_text, response_status
         )
-        raise Exception(
+        raise HomeAssistantError(
             f"Write failed for {item.key}: {response_text} (Status: {response_status})"
         )
 
