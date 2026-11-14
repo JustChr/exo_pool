@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.2.0 – 14 Nov 2026
+
+**Requires Home Assistant 2025.1 or newer.**
+
+- **Climate deprecation warnings fixed** – The heat pump entity now uses Home Assistant's new `native_*` temperature API (HA 2026.11+), so the "provides the deprecated temperature_unit / current_temperature / target_temperature" warnings are gone. Older HA versions keep working.
+- **Re-authentication** – If iAqualink rejects the stored login (e.g. after a password change) Home Assistant now shows a *Re-authenticate* prompt instead of failing silently.
+- **No duplicate setups** – Each pool system can only be added once (existing installs are migrated automatically).
+- **Reload / unload fixed** – Reloading the integration no longer leaves the old instance polling the cloud in the background, and a failed start-up is retried cleanly instead of coming up without data.
+- **MQTT reliability** – After a network blip the connection now resubscribes without blocking the MQTT I/O thread (previously every blip escalated to a full credential refresh). Heartbeat timers are created on the event loop (thread-safety fix), and disconnecting no longer blocks Home Assistant.
+- **REST polling** – While MQTT is connected the REST safety poll stays at 1 hour; it no longer drops back to the configured interval after a change.
+- **Device actions** – "Set schedule" / "Disable schedule" device actions now validate correctly in automations (`ACTION_SCHEMA` was missing).
+- **Services** – Inputs are validated (bad times/RPM are rejected with a clear error); with a single Exo Pool configured, no device needs to be selected.
+- **Privacy** – Passwords, tokens and AWS credentials are no longer written to the debug log; diagnostics also redact the serial number.
+- **pH set point** – Values are rounded properly before sending (e.g. 7.3 → 73).
+- **Entity naming** – Entities use Home Assistant's device-based naming (`has_entity_name`). Existing entity IDs are unchanged; friendly names are now prefixed with the device name (e.g. "Exo Pool Temperature").
+- Error messages from failed writes are shown as proper Home Assistant errors.
+- Added Home Assistant integration tests and a CI workflow.
+
 ## v0.1.21 – 20 Apr 2026
 
 - **Entity cleanup** – Removed redundant sensors (SWC Output %, SWC Low Output %, Error Code Text) and the Power switch (not controllable via API).

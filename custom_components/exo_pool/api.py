@@ -1,6 +1,7 @@
 import random
 
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.helpers import aiohttp_client
@@ -67,12 +68,7 @@ def _log_response_headers(
         _LOGGER.info("%s rate-limit headers found: %s", label, rate_headers)
 
 
-# API endpoints and keys from config_flow.py and REST sensors
-LOGIN_URL = "https://prod.zodiac-io.com/users/v1/login"
-REFRESH_URL = "https://prod.zodiac-io.com/users/v1/refresh"
-DATA_URL_TEMPLATE = "https://prod.zodiac-io.com/devices/v1/{}/shadow"
-API_KEY_PROD = "EOOEMOW4YR6QNB11"
-API_KEY_R = "EOOEMOW4YR6QNB07"
+from .const import DATA_URL_TEMPLATE, DOMAIN, USER_AGENT  # noqa: E402
 
 # Error code translation
 ERROR_CODES = {
@@ -84,8 +80,16 @@ ERROR_CODES = {
     9: "ORP Stop",
 }
 
-# Domain constant
-DOMAIN = "exo_pool"
+
+def error_message(code) -> str:
+    """Translate an Exo error code into a readable message."""
+    if code is None:
+        return ERROR_CODES[0]
+    try:
+        return ERROR_CODES.get(int(code), f"Unknown Error ({code})")
+    except (TypeError, ValueError):
+        return f"Unknown Error ({code})"
+
 # User-configurable refresh interval (seconds)
 REFRESH_OPTION_KEY = "refresh_interval"
 REFRESH_DEFAULT = 600
@@ -283,7 +287,6 @@ def _merge_dict(base: dict, update: dict) -> dict:
 async def async_update_data(hass: HomeAssistant, entry: ConfigEntry):
     """Fetch data from the Exo Pool API, handling token refresh."""
     store = _get_entry_store(hass, entry)
-    _clear_auth_state(store)
     no_read_until = store.get("no_read_until")
     if no_read_until and time.monotonic() < no_read_until:
         _schedule_debounced_refresh(hass, entry, delay=0.0)
@@ -334,20 +337,42 @@ async def async_update_data(hass: HomeAssistant, entry: ConfigEntry):
                 _LOGGER.debug("Token refresh failed: %s, falling back to full login", e)
 
         if not refreshed:
-            # Full login
-            await _full_login(hass, entry, session)
+            # Full login (raises ConfigEntryAuthFailed if credentials are rejected)
+            try:
+                await _full_login(hass, entry, session)
+            except ExoAuthError as err:
+                raise UpdateFailed(str(err)) from err
+            except aiohttp.ClientError as err:
+                raise UpdateFailed(f"Login request failed: {err}") from err
 
         id_token = entry.data.get("id_token")  # Update after refresh/login
-        _LOGGER.debug("Authentication token refreshed: %s", id_token[:10] + "...")
+        if not id_token:
+            raise UpdateFailed("No id_token after authentication")
+        _LOGGER.debug("Authentication tokens refreshed")
 
     # Fetch device data
     headers = {
         "Content-Type": "application/json",
-        "User-Agent": "okhttp/3.14.7",
+        "User-Agent": USER_AGENT,
         "Authorization": f"Bearer {id_token}",
     }
     _LOGGER.debug("Fetching data for serial_number: %s", serial_number)
     await _async_rate_limit(hass, entry)
+    try:
+        return await _async_fetch_shadow(hass, entry, store, session, serial_number, headers)
+    except aiohttp.ClientError as err:
+        raise UpdateFailed(f"Error communicating with Exo Pool API: {err}") from err
+
+
+async def _async_fetch_shadow(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    store: dict,
+    session: aiohttp.ClientSession,
+    serial_number: str,
+    headers: dict,
+) -> dict:
+    """GET the device shadow and return its reported state."""
     async with session.get(
         DATA_URL_TEMPLATE.format(serial_number), headers=headers
     ) as response:
@@ -442,30 +467,23 @@ async def async_update_data(hass: HomeAssistant, entry: ConfigEntry):
             hass.data.get(DOMAIN, {}).get(entry.entry_id, {}).get("coordinator")
         )
         store["last_success_fetch_ts"] = time.monotonic()
-        if coordinator:
-            configured = _get_configured_interval_seconds(entry)
-            current = getattr(
-                coordinator,
-                "update_interval",
-                timedelta(seconds=REFRESH_DEFAULT),
-            )
-            if (
-                current
-                and int(current.total_seconds()) > configured
-                and "boost_task" not in _get_entry_store(hass, entry)
-            ):
-                coordinator.update_interval = timedelta(seconds=configured)
+        _clear_auth_state(store)
+        if coordinator and "boost_task" not in store:
+            target = _target_interval_seconds(hass, entry)
+            current = coordinator.update_interval
+            if current is None or int(current.total_seconds()) != target:
+                coordinator.update_interval = timedelta(seconds=target)
                 _LOGGER.debug(
                     "Restored polling interval to %ss after successful fetch",
-                    configured,
+                    target,
                 )
         return reported
 
 
-from .auth import (  # noqa: F401
+from .auth import (  # noqa: F401,E402
+    ExoAuthError,
     _full_login,
     _refresh_token,
-    _store_aws_credentials,
     _refresh_authentication,
 )
 
@@ -478,6 +496,17 @@ def _get_configured_interval_seconds(entry: ConfigEntry) -> int:
     except (TypeError, ValueError):
         seconds = REFRESH_DEFAULT
     return max(REFRESH_MIN, min(REFRESH_MAX, seconds))
+
+
+def _target_interval_seconds(hass: HomeAssistant, entry: ConfigEntry) -> int:
+    """Return the REST poll interval to use right now.
+
+    While MQTT is connected, REST is only a slow safety net; otherwise use
+    the user-configured interval.
+    """
+    if get_mqtt_connected(hass, entry):
+        return REST_FALLBACK_INTERVAL
+    return _get_configured_interval_seconds(entry)
 
 
 def _get_entry_store(hass: HomeAssistant, entry: ConfigEntry) -> dict:
@@ -514,7 +543,7 @@ async def _async_boost_refresh_interval(
             await asyncio.sleep(BOOST_DURATION)
         except asyncio.CancelledError:
             return
-        configured = _get_configured_interval_seconds(entry)
+        configured = _target_interval_seconds(hass, entry)
         coordinator.update_interval = timedelta(seconds=configured)
         _LOGGER.debug(
             "Restored polling interval to %ss for %s",
@@ -648,7 +677,7 @@ def _schedule_credential_refresh(hass: HomeAssistant, entry: ConfigEntry) -> Non
     if not expiration_str:
         return
 
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     try:
         expires_at = datetime.fromisoformat(
@@ -672,7 +701,7 @@ def _schedule_credential_refresh(hass: HomeAssistant, entry: ConfigEntry) -> Non
     )
 
 
-from .coordinator import get_coordinator, cleanup_entry  # noqa: F401
+from .coordinator import async_cleanup_entry, get_coordinator  # noqa: F401,E402
 
 
 async def async_set_refresh_interval(
@@ -686,23 +715,25 @@ async def async_set_refresh_interval(
     seconds = max(REFRESH_MIN, min(REFRESH_MAX, seconds))
 
     store = _get_entry_store(hass, entry)
-    coordinator: DataUpdateCoordinator = store["coordinator"]
-    if "boost_task" not in store:
-        coordinator.update_interval = timedelta(seconds=seconds)
+    coordinator: DataUpdateCoordinator | None = store.get("coordinator")
+    if coordinator is not None and "boost_task" not in store:
+        coordinator.update_interval = timedelta(
+            seconds=_target_interval_seconds(hass, entry)
+        )
     _LOGGER.debug("Set refresh interval to %ss for %s", seconds, entry.entry_id)
 
-    # Persist to entry options
-    new_options = dict(entry.options)
-    new_options[REFRESH_OPTION_KEY] = seconds
-    hass.config_entries.async_update_entry(entry, options=new_options)
+    # Persist to entry options (no-op if unchanged, so no listener loop)
+    if entry.options.get(REFRESH_OPTION_KEY) != seconds:
+        new_options = dict(entry.options)
+        new_options[REFRESH_OPTION_KEY] = seconds
+        hass.config_entries.async_update_entry(entry, options=new_options)
 
 
 async def set_pool_value(hass, entry, setting, value):
     """Set a pool setting value via the API."""
     id_token = entry.data.get("id_token")
     if not id_token:
-        _LOGGER.error("No id_token available for setting %s", setting)
-        return
+        raise HomeAssistantError(f"Not authenticated; cannot set {setting}")
 
     keys = setting.split(".")
     nested_value = _build_nested_dict(keys, value)
@@ -726,8 +757,7 @@ async def set_heating_value(hass, entry, key: str, value, delay_refresh: bool = 
     """Set a top-level heating value via the API (e.g., sp)."""
     id_token = entry.data.get("id_token")
     if not id_token:
-        _LOGGER.error("No id_token available for heating.%s", key)
-        return
+        raise HomeAssistantError(f"Not authenticated; cannot set heating.{key}")
     coordinator = _get_entry_store(hass, entry).get("coordinator")
     if coordinator:
         _apply_heating_update(coordinator, key, value)
@@ -757,8 +787,7 @@ async def update_schedule(
     """Update a schedule's timer (and rpm for VSP) via the API."""
     id_token = entry.data.get("id_token")
     if not id_token:
-        _LOGGER.error("No id_token available for schedule %s", schedule_key)
-        raise Exception("Unauthenticated")
+        raise HomeAssistantError(f"Not authenticated; cannot update {schedule_key}")
 
     sched_patch: dict = {}
     if start is not None or end is not None:
@@ -802,7 +831,7 @@ async def update_schedules(
     """Update multiple schedules in a single batched API call."""
     id_token = entry.data.get("id_token")
     if not id_token:
-        raise Exception("Unauthenticated")
+        raise HomeAssistantError("Not authenticated; cannot update schedules")
 
     batch_payload: dict = {}
     coordinator = _get_entry_store(hass, entry).get("coordinator")

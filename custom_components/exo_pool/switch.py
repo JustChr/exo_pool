@@ -1,201 +1,138 @@
+"""Switch platform for Exo Pool."""
+from __future__ import annotations
+
+import logging
+from typing import Any
+
 from homeassistant.components.switch import SwitchEntity
-from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+
 from .api import get_coordinator, set_pool_value
-from .const import DOMAIN, device_info as _device_info, swc0
-import logging
+from .const import device_info as _device_info, swc0
 
 _LOGGER = logging.getLogger(__name__)
-
-_LOGGER.debug("Switch platform module loaded")
 
 
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     """Set up the switch platform for Exo Pool."""
-    _LOGGER.debug("Setting up switch platform for entry: %s", entry.entry_id)
     coordinator = await get_coordinator(hass, entry)
-    entities = [
-        ORPBoostSwitch(entry, coordinator),
-        ChlorinatorSwitch(entry, coordinator),
-        Aux1Switch(entry, coordinator),
-        Aux2Switch(entry, coordinator),
-        ChlorinatorLowModeSwitch(entry, coordinator),
-    ]
-    async_add_entities(entities)
+    async_add_entities(
+        [
+            ORPBoostSwitch(entry, coordinator),
+            ChlorinatorSwitch(entry, coordinator),
+            Aux1Switch(entry, coordinator),
+            Aux2Switch(entry, coordinator),
+            ChlorinatorLowModeSwitch(entry, coordinator),
+        ]
+    )
 
 
 class _ExoSwitch(CoordinatorEntity, SwitchEntity):
-    """Base class for Exo Pool switches with optimistic state and error handling."""
+    """Base class for Exo Pool switches backed by an swc_0 field."""
 
+    _attr_has_entity_name = True
     _pool_setting: str
+    _unique_suffix: str
 
     def __init__(self, entry: ConfigEntry, coordinator) -> None:
         super().__init__(coordinator)
         self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_{self._unique_suffix}"
         self._attr_device_info = _device_info(entry)
+
+    def _raw_value(self) -> Any:
+        node: Any = swc0(self.coordinator.data)
+        for key in self._pool_setting.split("."):
+            node = node.get(key) if isinstance(node, dict) else None
+        return node
+
+    @property
+    def is_on(self) -> bool | None:
+        value = self._raw_value()
+        return None if value is None else bool(value)
+
+    @property
+    def available(self) -> bool:
+        return super().available and bool(swc0(self.coordinator.data))
 
     async def _apply(self, value: bool) -> None:
         try:
             await set_pool_value(self.hass, self._entry, self._pool_setting, int(value))
+        except HomeAssistantError:
+            raise
         except Exception as err:
-            raise HomeAssistantError(f"{self._attr_name}: {err}") from err
+            raise HomeAssistantError(f"{self.name}: {err}") from err
 
-    async def async_turn_on(self, **kwargs) -> None:
+    async def async_turn_on(self, **kwargs: Any) -> None:
         await self._apply(True)
 
-    async def async_turn_off(self, **kwargs) -> None:
+    async def async_turn_off(self, **kwargs: Any) -> None:
         await self._apply(False)
 
 
 class ORPBoostSwitch(_ExoSwitch):
-    """Representation of an ORP Boost switch."""
+    """ORP Boost switch."""
 
-    _pool_setting = "boost"
+    _attr_name = "ORP Boost"
     _attr_icon = "mdi:water-pump"
-
-    def __init__(self, entry: ConfigEntry, coordinator):
-        super().__init__(entry, coordinator)
-        self._attr_name = "ORP Boost"
-        self._attr_unique_id = f"{entry.entry_id}_orp_boost"
+    _pool_setting = "boost"
+    _unique_suffix = "orp_boost"
 
     @property
-    def is_on(self):
-        return bool(
-            self.coordinator.data.get("equipment", {}).get("swc_0", {}).get("boost")
-        )
-
-    @property
-    def available(self):
-        return (
-            self.coordinator.data is not None
-            and "equipment" in self.coordinator.data
-            and "swc_0" in self.coordinator.data["equipment"]
-        )
-
-    @property
-    def extra_state_attributes(self):
-        time_str = (
-            self.coordinator.data.get("equipment", {})
-            .get("swc_0", {})
-            .get("boost_time")
-        )
-        if time_str and isinstance(time_str, str) and ":" in time_str:
+    def extra_state_attributes(self) -> dict[str, Any]:
+        time_str = swc0(self.coordinator.data).get("boost_time")
+        if isinstance(time_str, str) and ":" in time_str:
             try:
-                hours, minutes = map(int, time_str.split(":"))
+                hours, minutes = map(int, time_str.split(":")[:2])
                 return {"boost_time_remaining": hours * 60 + minutes}
             except (ValueError, TypeError):
-                _LOGGER.error("Invalid boost_time format: %s", time_str)
-                return {}
+                _LOGGER.debug("Invalid boost_time format: %s", time_str)
         return {}
 
 
 class ChlorinatorSwitch(_ExoSwitch):
-    """Representation of a Chlorinator switch."""
+    """Chlorinator (salt water chlorine production) switch."""
 
-    _pool_setting = "production"
+    _attr_name = "Chlorinator"
     _attr_icon = "mdi:water-plus"
-
-    def __init__(self, entry: ConfigEntry, coordinator):
-        super().__init__(entry, coordinator)
-        self._attr_name = "Chlorinator"
-        self._attr_unique_id = f"{entry.entry_id}_production"
-
-    @property
-    def is_on(self):
-        return bool(
-            self.coordinator.data.get("equipment", {})
-            .get("swc_0", {})
-            .get("production")
-        )
-
-    @property
-    def available(self):
-        return (
-            self.coordinator.data is not None
-            and "equipment" in self.coordinator.data
-            and "swc_0" in self.coordinator.data["equipment"]
-        )
+    _pool_setting = "production"
+    _unique_suffix = "production"
 
 
 class Aux1Switch(_ExoSwitch):
-    """Representation of an Aux 1 switch."""
+    """Aux 1 relay switch."""
 
-    _pool_setting = "aux_1.state"
+    _attr_name = "Aux 1"
     _attr_icon = "mdi:toggle-switch"
-
-    def __init__(self, entry: ConfigEntry, coordinator):
-        super().__init__(entry, coordinator)
-        self._attr_name = "Aux 1"
-        self._attr_unique_id = f"{entry.entry_id}_aux_1"
-
-    @property
-    def is_on(self):
-        return bool(
-            self.coordinator.data.get("equipment", {})
-            .get("swc_0", {})
-            .get("aux_1", {})
-            .get("state")
-        )
-
-    @property
-    def available(self):
-        return (
-            self.coordinator.data is not None
-            and "equipment" in self.coordinator.data
-            and "swc_0" in self.coordinator.data["equipment"]
-        )
+    _pool_setting = "aux_1.state"
+    _unique_suffix = "aux_1"
 
 
 class Aux2Switch(_ExoSwitch):
-    """Representation of an Aux 2 switch."""
+    """Aux 2 relay switch (unavailable when Aux 2 drives the heat pump)."""
 
-    _pool_setting = "aux_2.state"
+    _attr_name = "Aux 2"
     _attr_icon = "mdi:toggle-switch"
-
-    def __init__(self, entry: ConfigEntry, coordinator):
-        super().__init__(entry, coordinator)
-        self._attr_name = "Aux 2"
-        self._attr_unique_id = f"{entry.entry_id}_aux_2"
+    _pool_setting = "aux_2.state"
+    _unique_suffix = "aux_2"
 
     @property
-    def is_on(self):
-        return bool(swc0(self.coordinator.data).get("aux_2", {}).get("state"))
-
-    @property
-    def available(self):
+    def available(self) -> bool:
         if swc0(self.coordinator.data).get("aux_2", {}).get("mode") == 3:
             return False
-        return (
-            self.coordinator.data is not None
-            and "equipment" in self.coordinator.data
-            and "swc_0" in self.coordinator.data["equipment"]
-        )
+        return super().available
 
 
 class ChlorinatorLowModeSwitch(_ExoSwitch):
-    """Representation of the chlorinator low mode switch."""
+    """Chlorinator low mode switch."""
 
-    _pool_setting = "low"
+    _attr_name = "Chlorinator Low Mode"
     _attr_icon = "mdi:water-minus"
-
-    def __init__(self, entry: ConfigEntry, coordinator):
-        super().__init__(entry, coordinator)
-        self._attr_name = "Chlorinator Low Mode"
-        self._attr_unique_id = f"{entry.entry_id}_swc_low_mode"
-
-    @property
-    def is_on(self):
-        return bool(swc0(self.coordinator.data).get("low"))
-
-    @property
-    def available(self):
-        return (
-            self.coordinator.data is not None
-            and "equipment" in self.coordinator.data
-            and "swc_0" in self.coordinator.data["equipment"]
-        )
+    _pool_setting = "low"
+    _unique_suffix = "swc_low_mode"

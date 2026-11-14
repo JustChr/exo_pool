@@ -29,6 +29,7 @@ async def get_coordinator(hass: HomeAssistant, entry: ConfigEntry) -> DataUpdate
     coordinator = DataUpdateCoordinator(
         hass,
         _LOGGER,
+        config_entry=entry,
         name="Exo Pool",
         update_method=lambda: async_update_data(hass, entry),
         update_interval=timedelta(seconds=seconds),
@@ -49,7 +50,7 @@ async def get_coordinator(hass: HomeAssistant, entry: ConfigEntry) -> DataUpdate
     if mqtt_connected:
         try:
             await asyncio.wait_for(mqtt_ready.wait(), timeout=10.0)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pass
         finally:
             unsubscribe()
@@ -69,19 +70,23 @@ async def get_coordinator(hass: HomeAssistant, entry: ConfigEntry) -> DataUpdate
     return store["coordinator"]
 
 
-def cleanup_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Clean up MQTT client and scheduled tasks for a config entry."""
-    from .api import _get_entry_store
+async def async_cleanup_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Disconnect MQTT, cancel background tasks and drop the entry store."""
+    from .const import DOMAIN
 
-    store = _get_entry_store(hass, entry)
-
-    mqtt_client = store.get("mqtt_client")
-    if mqtt_client:
-        try:
-            mqtt_client.disconnect()
-        except Exception:
-            _LOGGER.debug("Error disconnecting MQTT during cleanup", exc_info=True)
+    store = hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
+    if not store:
+        return
 
     for task_key in ("credential_refresh_task", "debounce_refresh_task", "boost_task"):
         if task := store.get(task_key):
             task.cancel()
+    if (manager := store.get("write_manager")) is not None:
+        manager.cancel()
+
+    if mqtt_client := store.get("mqtt_client"):
+        # disconnect() blocks on the CRT future; keep it off the event loop.
+        try:
+            await hass.async_add_executor_job(mqtt_client.disconnect)
+        except Exception:  # noqa: BLE001
+            _LOGGER.debug("Error disconnecting MQTT during cleanup", exc_info=True)

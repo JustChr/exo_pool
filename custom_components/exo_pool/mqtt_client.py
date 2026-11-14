@@ -108,11 +108,17 @@ class ExoMqttClient:
 
         self._subscribe_shadow_topics()
         self._request_shadow()
-        self._start_heartbeat()
+        # connect() runs in an executor thread; asyncio timers must be
+        # created on the event loop itself.
+        self._loop.call_soon_threadsafe(self._start_heartbeat)
 
     def disconnect(self) -> None:
-        """Disconnect from AWS IoT."""
-        self._stop_heartbeat()
+        """Disconnect from AWS IoT (blocking; call from an executor thread)."""
+        try:
+            self._loop.call_soon_threadsafe(self._stop_heartbeat)
+        except RuntimeError:
+            # Event loop already closed (shutdown); the timer died with it.
+            self._heartbeat_cancel = None
         if self._connection is not None:
             try:
                 self._connection.disconnect().result(timeout=_DISCONNECT_TIMEOUT)
@@ -191,8 +197,10 @@ class ExoMqttClient:
         _LOGGER.debug("Requested shadow state via %s", topic)
 
     def _start_heartbeat(self) -> None:
-        """Start periodic shadow/get to keep coordinator data fresh."""
+        """Start periodic shadow/get to keep coordinator data fresh (event loop only)."""
         self._stop_heartbeat()
+        if self._connection is None:
+            return
         handle = self._loop.call_later(
             _HEARTBEAT_INTERVAL, self._heartbeat_tick
         )
@@ -257,16 +265,44 @@ class ExoMqttClient:
             session_present,
         )
         self._connected = True
-        # Re-subscribe since we use clean_session=True
-        if self._subscribe_shadow_topics():
+        if session_present:
             self._request_shadow()
-        else:
-            _LOGGER.warning(
-                "All subscribes failed after reconnect - credentials may have expired"
-            )
-            self._connected = False
-            if self._reconnect_failed_callback is not None:
-                self._loop.call_soon_threadsafe(self._reconnect_failed_callback)
+            return
+        # clean_session=True: subscriptions are gone. This callback runs on the
+        # CRT I/O thread, so we must not block waiting for SUBACKs here -
+        # resubscribe asynchronously and continue in the completion callback.
+        try:
+            future, _ = connection.resubscribe_existing_topics()
+        except Exception:  # noqa: BLE001
+            _LOGGER.warning("Resubscribe after reconnect failed", exc_info=True)
+            self._handle_resubscribe_failure()
+            return
+        future.add_done_callback(self._on_resubscribe_complete)
+
+    def _on_resubscribe_complete(self, future) -> None:
+        """Completion of resubscribe_existing_topics (CRT thread)."""
+        try:
+            result = future.result()
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning("Resubscribe after reconnect failed: %s", err)
+            self._handle_resubscribe_failure()
+            return
+        topics = (result or {}).get("topics") or []
+        if topics and all(qos is None for _, qos in topics):
+            self._handle_resubscribe_failure()
+            return
+        try:
+            self._request_shadow()
+        except Exception:  # noqa: BLE001
+            _LOGGER.debug("Shadow request after resubscribe failed", exc_info=True)
+
+    def _handle_resubscribe_failure(self) -> None:
+        _LOGGER.warning(
+            "All subscribes failed after reconnect - credentials may have expired"
+        )
+        self._connected = False
+        if self._reconnect_failed_callback is not None:
+            self._loop.call_soon_threadsafe(self._reconnect_failed_callback)
 
 
 def _summarize_changes(old: dict, new: dict, path: str = "") -> list[str]:

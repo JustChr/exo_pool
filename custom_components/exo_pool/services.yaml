@@ -8,6 +8,7 @@ set_schedule:
       required: false
       selector:
         entity:
+          integration: exo_pool
           domain: binary_sensor
     device_id:
       name: Device
@@ -100,6 +101,7 @@ disable_schedule:
       required: false
       selector:
         entity:
+          integration: exo_pool
           domain: binary_sensor
     device_id:
       name: Device

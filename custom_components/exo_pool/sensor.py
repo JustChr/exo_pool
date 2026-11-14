@@ -7,9 +7,13 @@ from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from .api import get_coordinator, ERROR_CODES
-from .const import DOMAIN, FILTER_PUMP_TYPE_MAP, device_info as _device_info, swc0
-from homeassistant.const import EntityCategory
+from .api import error_message, get_coordinator
+from .const import FILTER_PUMP_TYPE_MAP, device_info as _device_info, swc0
+from homeassistant.const import (
+    SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
+    EntityCategory,
+    UnitOfTemperature,
+)
 import logging
 
 _LOGGER = logging.getLogger(__name__)
@@ -38,6 +42,8 @@ async def async_setup_entry(
 class TempSensor(CoordinatorEntity, SensorEntity):
     """Representation of a temperature sensor."""
 
+    _attr_has_entity_name = True
+
     _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:pool-thermometer"
@@ -47,7 +53,7 @@ class TempSensor(CoordinatorEntity, SensorEntity):
         self._entry = entry
         self._attr_name = "Temperature"
         self._attr_unique_id = f"{entry.entry_id}_temp"
-        self._attr_native_unit_of_measurement = "°C"
+        self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
         self._attr_device_info = _device_info(entry)
 
     @property
@@ -57,6 +63,8 @@ class TempSensor(CoordinatorEntity, SensorEntity):
 
 class ORPSensor(CoordinatorEntity, SensorEntity):
     """Representation of an ORP sensor."""
+
+    _attr_has_entity_name = True
 
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:water-check"
@@ -80,6 +88,8 @@ class ORPSensor(CoordinatorEntity, SensorEntity):
 
 class PHSensor(CoordinatorEntity, SensorEntity):
     """Representation of a pH sensor."""
+
+    _attr_has_entity_name = True
 
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:test-tube"
@@ -106,6 +116,8 @@ class PHSensor(CoordinatorEntity, SensorEntity):
 class ErrorCodeSensor(CoordinatorEntity, SensorEntity):
     """Representation of an error code sensor."""
 
+    _attr_has_entity_name = True
+
     _attr_icon = "mdi:alert-circle"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
@@ -123,20 +135,17 @@ class ErrorCodeSensor(CoordinatorEntity, SensorEntity):
     @property
     def extra_state_attributes(self):
         """Provide the error message as an attribute."""
-        code = swc0(self.coordinator.data).get("error_code")
-        return {
-            "error_message": ERROR_CODES.get(
-                int(code) if code is not None else 0, "Unknown Error"
-            )
-        }
+        return {"error_message": error_message(swc0(self.coordinator.data).get("error_code"))}
 
 
 class WifiRssiSensor(CoordinatorEntity, SensorEntity):
     """Representation of a WiFi RSSI sensor."""
 
+    _attr_has_entity_name = True
+
     _attr_device_class = SensorDeviceClass.SIGNAL_STRENGTH
     _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_native_unit_of_measurement = "dBm"
+    _attr_native_unit_of_measurement = SIGNAL_STRENGTH_DECIBELS_MILLIWATT
     _attr_icon = "mdi:wifi"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
@@ -150,11 +159,13 @@ class WifiRssiSensor(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self):
         """Return the WiFi RSSI value."""
-        return self.coordinator.data.get("debug", {}).get("RSSI")
+        return (self.coordinator.data or {}).get("debug", {}).get("RSSI")
 
 
 class HardwareSensor(CoordinatorEntity, SensorEntity):
     """Representation of hardware configuration information."""
+
+    _attr_has_entity_name = True
 
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_icon = "mdi:information-outline"

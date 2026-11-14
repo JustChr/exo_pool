@@ -3,24 +3,51 @@
     "step": {
       "user": {
         "title": "Connect to Exo Pool",
-        "description": "Enter your iAqualink email and password",
+        "description": "Enter your iAqualink email and password.",
         "data": {
           "email": "Email",
           "password": "Password"
         }
       },
       "select_system": {
-        "title": "Select Your Pool System",
+        "title": "Select your pool system",
         "description": "Choose the system you want to control.",
         "data": {
           "system": "System"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate Exo Pool",
+        "description": "Your iAqualink login was rejected. Enter your current email and password.",
+        "data": {
+          "email": "Email",
+          "password": "Password"
         }
       }
     },
     "error": {
       "auth_failed": "Login failed. Check email/password.",
-      "unknown": "An unknown error occurred.",
-      "no_systems": "No pool systems found for this account."
+      "cannot_connect": "Could not reach the iAqualink service. Try again later.",
+      "unknown": "An unknown error occurred."
+    },
+    "abort": {
+      "already_configured": "This pool system is already configured.",
+      "cannot_connect": "Could not reach the iAqualink service. Try again later.",
+      "no_systems": "No eXO pool systems found for this account.",
+      "reauth_successful": "Re-authentication was successful."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Exo Pool options",
+        "data": {
+          "refresh_interval": "REST poll interval (seconds)"
+        },
+        "data_description": {
+          "refresh_interval": "How often to poll the cloud API when the real-time MQTT connection is unavailable (300–3600). While MQTT is connected, a 1-hour safety poll is used instead."
+        }
+      }
     }
   }
 }
