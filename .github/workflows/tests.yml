@@ -18,3 +18,26 @@ jobs:
           pip install pytest-homeassistant-custom-component awsiotsdk
       - name: Run tests
         run: python -m pytest tests -v
+  smoke:
+    # Boots a real Home Assistant core (oldest supported and latest) and runs
+    # scripts/smoke_test.py, incl. the takeover of an old "Exo Pool" setup.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - python: "3.13"
+            homeassistant: "homeassistant==2025.1.4"
+          - python: "3.14"
+            homeassistant: "homeassistant"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install Home Assistant
+        run: |
+          python -m pip install --upgrade pip
+          pip install "${{ matrix.homeassistant }}" awsiotsdk
+      - name: Run smoke test
+        run: python scripts/smoke_test.py

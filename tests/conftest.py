@@ -1,4 +1,4 @@
-"""Shared fixtures for exo_pool tests."""
+"""Shared fixtures for zodiac_exo tests."""
 from __future__ import annotations
 
 import importlib
@@ -10,7 +10,7 @@ import pytest
 
 # Stub out the homeassistant package so mqtt_client.py can be imported
 # without a full HA installation. mqtt_client.py itself has no HA deps,
-# but importing via custom_components.exo_pool triggers __init__.py which does.
+# but importing via custom_components.zodiac_exo triggers __init__.py which does.
 # We pre-register the mqtt_client module directly to short-circuit that.
 #
 # When Home Assistant (pytest-homeassistant-custom-component) is installed the
@@ -29,17 +29,17 @@ if HAS_HA:
         sys.path.insert(0, str(_REPO_ROOT))
 else:
     _mqtt_spec = importlib.util.spec_from_file_location(
-        "custom_components.exo_pool.mqtt_client",
-        _REPO_ROOT / "custom_components" / "exo_pool" / "mqtt_client.py",
+        "custom_components.zodiac_exo.mqtt_client",
+        _REPO_ROOT / "custom_components" / "zodiac_exo" / "mqtt_client.py",
     )
     _mqtt_mod = importlib.util.module_from_spec(_mqtt_spec)
 
     # Ensure parent packages exist in sys.modules
-    for pkg in ("custom_components", "custom_components.exo_pool"):
+    for pkg in ("custom_components", "custom_components.zodiac_exo"):
         if pkg not in sys.modules:
             sys.modules[pkg] = types.ModuleType(pkg)
 
-    sys.modules["custom_components.exo_pool.mqtt_client"] = _mqtt_mod
+    sys.modules["custom_components.zodiac_exo.mqtt_client"] = _mqtt_mod
     _mqtt_spec.loader.exec_module(_mqtt_mod)
 
 
@@ -105,7 +105,7 @@ def mock_event_loop():
 def build_client(mock_mqtt_connection, mock_event_loop):
     """Factory to build an ExoMqttClient with mocked internals."""
     from unittest.mock import MagicMock
-    from custom_components.exo_pool.mqtt_client import ExoMqttClient
+    from custom_components.zodiac_exo.mqtt_client import ExoMqttClient
 
     def _build(**kwargs):
         client = ExoMqttClient(

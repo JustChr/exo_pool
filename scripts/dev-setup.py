@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Automated Home Assistant dev instance setup for exo_pool.
+Automated Home Assistant dev instance setup for zodiac_exo.
 
 Usage:
     python3 scripts/dev-setup.py
 
-Creates the HA account, completes onboarding, adds the exo_pool
+Creates the HA account, completes onboarding, adds the zodiac_exo
 integration using credentials from .env, and configures debug logging.
 Saves the auth token to .dev-token for future use.
 
@@ -39,7 +39,7 @@ HOME_LOCATION = {
 }
 LOGGER_CONFIG = {
     "default": "warning",
-    "logs": {"custom_components.exo_pool": "debug"},
+    "logs": {"custom_components.zodiac_exo": "debug"},
 }
 
 
@@ -200,10 +200,10 @@ def onboard(token_file: str = TOKEN_FILE) -> str:
 
 
 def configure_logging(token: str) -> None:
-    """Set up debug logging for exo_pool via the HA API."""
-    print("Configuring debug logging for exo_pool...")
+    """Set up debug logging for zodiac_exo via the HA API."""
+    print("Configuring debug logging for zodiac_exo...")
     _request("POST", "/api/services/logger/set_level",
-             {"custom_components.exo_pool": "debug"}, token=token)
+             {"custom_components.zodiac_exo": "debug"}, token=token)
 
 
 def _extract_system_options(schema: list) -> list:
@@ -219,18 +219,18 @@ def _extract_system_options(schema: list) -> list:
 
 
 def add_integration(token: str, email: str, password: str) -> bool:
-    """Add the exo_pool integration via config flow."""
+    """Add the zodiac_exo integration via config flow."""
     entries = _request("GET", "/api/config/config_entries/entry", token=token)
     if entries:
         for entry in entries:
-            if entry.get("domain") == "exo_pool":
+            if entry.get("domain") == "zodiac_exo":
                 print("Integration already configured")
                 return True
 
-    print("Adding exo_pool integration...")
+    print("Adding zodiac_exo integration...")
 
     flow = _request("POST", "/api/config/config_entries/flow",
-                     {"handler": "exo_pool"}, token=token)
+                     {"handler": "zodiac_exo"}, token=token)
     if not flow or "flow_id" not in flow:
         print("Failed to init config flow")
         return False
@@ -245,7 +245,7 @@ def add_integration(token: str, email: str, password: str) -> bool:
         return False
 
     if result.get("type") == "create_entry":
-        print(f"  Integration added: {result.get('title', 'exo_pool')}")
+        print(f"  Integration added: {result.get('title', 'zodiac_exo')}")
         return True
 
     if result.get("type") != "form" or result.get("step_id") != "select_system":
@@ -262,7 +262,7 @@ def add_integration(token: str, email: str, password: str) -> bool:
     result = _request("POST", f"/api/config/config_entries/flow/{flow_id}",
                        {"system": system}, token=token)
     if result and result.get("type") == "create_entry":
-        print(f"  Integration added: {result.get('title', 'exo_pool')}")
+        print(f"  Integration added: {result.get('title', 'zodiac_exo')}")
         return True
 
     print(f"  Unexpected flow result: {json.dumps(result)[:500]}")
@@ -271,7 +271,7 @@ def add_integration(token: str, email: str, password: str) -> bool:
 
 def start_docker() -> None:
     """Start the HA dev container."""
-    result = subprocess.run(["docker", "ps", "-q", "-f", "name=ha-exo-pool-dev"],
+    result = subprocess.run(["docker", "ps", "-q", "-f", "name=ha-zodiac-exo-dev"],
                             capture_output=True, text=True)
     if result.stdout.strip():
         print("HA container already running")

@@ -1,4 +1,4 @@
-"""Number platform for Exo Pool."""
+"""Number platform for Zodiac Exo."""
 from __future__ import annotations
 
 import logging
@@ -20,7 +20,7 @@ _LOGGER = logging.getLogger(__name__)
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    """Set up the number platform for Exo Pool."""
+    """Set up the number platform for Zodiac Exo."""
     coordinator = await get_coordinator(hass, entry)
 
     async_add_entities(
@@ -53,7 +53,7 @@ async def async_setup_entry(
 
 
 class _ExoNumber(CoordinatorEntity, NumberEntity):
-    """Base class for Exo Pool number entities backed by an swc_0 field."""
+    """Base class for Zodiac Exo number entities backed by an swc_0 field."""
 
     _attr_has_entity_name = True
     _attr_mode = NumberMode.BOX

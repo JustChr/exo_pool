@@ -18,7 +18,7 @@ stop:
 	docker compose -f docker-compose.dev.yml down
 
 logs:
-	docker logs ha-exo-pool-dev -f --tail 50
+	docker logs ha-zodiac-exo-dev -f --tail 50
 
 restart:
-	docker restart ha-exo-pool-dev
+	docker restart ha-zodiac-exo-dev

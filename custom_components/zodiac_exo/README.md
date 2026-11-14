@@ -1,8 +1,8 @@
-# Exo Pool – Home Assistant Integration
+# Zodiac iAqualink Exo – Home Assistant Integration
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz)
-[![GitHub Release](https://img.shields.io/github/release/JustChr/exo_pool.svg)](https://github.com/JustChr/exo_pool/releases)
-[![License](https://img.shields.io/github/license/JustChr/exo_pool.svg)](LICENSE)
+[![GitHub Release](https://img.shields.io/github/release/JustChr/ha-zodiac-iaqualink-exo.svg)](https://github.com/JustChr/ha-zodiac-iaqualink-exo/releases)
+[![License](https://img.shields.io/github/license/JustChr/ha-zodiac-iaqualink-exo.svg)](LICENSE)
 
 Control and monitor your **Zodiac iAqualink Exo** pool system directly from Home Assistant — real-time updates via the same cloud connection as the official app. No extra hardware, no MQTT broker, no addon required.
 
@@ -20,7 +20,7 @@ Confirmed working:
 
 - **Exo IQ LS** (dual-link ORP & pH, Zodiac VSP pump)
 
-Have success with another model? [Open a discussion!](https://github.com/JustChr/exo_pool/discussions)
+Have success with another model? [Open a discussion!](https://github.com/JustChr/ha-zodiac-iaqualink-exo/discussions)
 
 ---
 
@@ -29,10 +29,22 @@ Have success with another model? [Open a discussion!](https://github.com/JustChr
 > **Requires [HACS](https://hacs.xyz).** Add this as a custom repository first.
 
 1. In Home Assistant open **HACS → Integrations → ⋮ → Custom repositories**
-2. Add `https://github.com/JustChr/exo_pool` with category **Integration**
-3. Search for **Exo Pool** and click **Download**
+2. Add `https://github.com/JustChr/ha-zodiac-iaqualink-exo` with category **Integration**
+3. Search for **Zodiac iAqualink Exo** and click **Download**
 4. Restart Home Assistant
-5. Go to **Settings → Devices & Services → Add Integration**, search for **Exo Pool**, and enter your Zodiac iAqualink credentials
+5. Go to **Settings → Devices & Services → Add Integration**, search for **Zodiac iAqualink Exo**, and enter your Zodiac iAqualink credentials
+
+### Upgrading from "Exo Pool" (v0.2.x and older)
+
+In v0.3.0 the integration was renamed from **Exo Pool** (`exo_pool`) to **Zodiac iAqualink Exo** (`zodiac_exo`), because another integration already uses the old name. Your existing setup is taken over automatically:
+
+1. In HACS, remove **Exo Pool**. Do **not** delete the integration under *Devices & Services*, because that throws away the settings to be taken over.
+2. Install **Zodiac iAqualink Exo** as described above and restart Home Assistant.
+3. Go to **Settings → Devices & Services → Add Integration → Zodiac iAqualink Exo**. It finds your Exo Pool setup and offers to take it over. Confirm, and you're done.
+
+Everything is kept: your login and options, entity IDs (for example `sensor.exo_pool_ph`), history, entity names, icons, areas, disabled entities, and the device, so device-based automations keep working. You may see a "Exo Pool integration not found" repair until you do step 3. It disappears after the takeover.
+
+The only thing to change by hand: automations or scripts that call `exo_pool.*` actions need `zodiac_exo.*`, for example `zodiac_exo.set_schedule`.
 
 ---
 
@@ -78,9 +90,9 @@ Have success with another model? [Open a discussion!](https://github.com/JustChr
 After installation, the integration connects automatically using your Zodiac credentials. No manual MQTT or API setup is required.
 
 **REST poll interval** (fallback when the real-time connection is unavailable):
-Go to **Settings → Devices & Services → Exo Pool → Configure** and set the interval (300–3600 seconds). While the real-time (MQTT) connection is up, a 1-hour safety poll is used instead, so under normal operation this rarely fires.
+Go to **Settings → Devices & Services → Zodiac iAqualink Exo → Configure** and set the interval (300–3600 seconds). While the real-time (MQTT) connection is up, a 1-hour safety poll is used instead, so under normal operation this rarely fires.
 
-**Changed your iAqualink password?** Home Assistant shows a *Re-authenticate* notification for Exo Pool. Click it and enter the new password — no need to remove and re-add the integration.
+**Changed your iAqualink password?** Home Assistant shows a *Re-authenticate* notification for Zodiac iAqualink Exo. Click it and enter the new password — no need to remove and re-add the integration.
 
 ---
 
@@ -99,12 +111,12 @@ Each schedule on the device is exposed as a binary sensor with these attributes:
 
 ### Services
 
-#### `exo_pool.set_schedule` — update a single schedule
+#### `zodiac_exo.set_schedule` — update a single schedule
 
 Target by entity:
 
 ```yaml
-action: exo_pool.set_schedule
+action: zodiac_exo.set_schedule
 data:
   entity_id: binary_sensor.schedule_filter_pump
   start: "08:00"
@@ -115,7 +127,7 @@ data:
 Or target by device and schedule key:
 
 ```yaml
-action: exo_pool.set_schedule
+action: zodiac_exo.set_schedule
 data:
   device_id: 1a2b3c4d5e6f7g8h9i0j
   schedule: sch1
@@ -123,12 +135,12 @@ data:
   end: "22:00"
 ```
 
-#### `exo_pool.set_schedules` — update multiple schedules in one call
+#### `zodiac_exo.set_schedules` — update multiple schedules in one call
 
 All changes are sent together — only one settling period regardless of how many schedules you update:
 
 ```yaml
-action: exo_pool.set_schedules
+action: zodiac_exo.set_schedules
 data:
   schedules:
     - schedule: sch1
@@ -143,18 +155,18 @@ data:
       end: "00:00"   # 00:00–00:00 disables a schedule
 ```
 
-#### `exo_pool.disable_schedule` — disable a schedule
+#### `zodiac_exo.disable_schedule` — disable a schedule
 
 ```yaml
-action: exo_pool.disable_schedule
+action: zodiac_exo.disable_schedule
 data:
   entity_id: binary_sensor.schedule_salt_water_chlorinator
 ```
 
-#### `exo_pool.reload` — reload the integration
+#### `zodiac_exo.reload` — reload the integration
 
 ```yaml
-action: exo_pool.reload
+action: zodiac_exo.reload
 ```
 
 ### Device Actions (no YAML needed)
@@ -198,7 +210,7 @@ This pattern lets you manage pump schedules without touching YAML after initial 
 **How it works:**
 - `input_boolean` helpers act as on/off toggles for each schedule
 - `input_datetime` helpers store the start and end times
-- A script validates the input and calls `exo_pool.set_schedules`
+- A script validates the input and calls `zodiac_exo.set_schedules`
 
 **Helper entities to create** (Settings → Helpers):
 
@@ -317,7 +329,7 @@ sequence:
             {% if s2_error %}Schedule 2: start must be before end.{% endif %}
             {% if overlap %}Schedules 1 and 2 overlap.{% endif %}
       - stop: Validation failed
-  - action: exo_pool.set_schedules
+  - action: zodiac_exo.set_schedules
     data:
       schedules:
         - schedule: sch1
@@ -364,8 +376,8 @@ sequence:
 
 ## Support
 
-- **Bugs / Feature Requests:** [GitHub Issues](https://github.com/JustChr/exo_pool/issues)
-- **Q&A / Discussion:** [GitHub Discussions](https://github.com/JustChr/exo_pool/discussions)
+- **Bugs / Feature Requests:** [GitHub Issues](https://github.com/JustChr/ha-zodiac-iaqualink-exo/issues)
+- **Q&A / Discussion:** [GitHub Discussions](https://github.com/JustChr/ha-zodiac-iaqualink-exo/discussions)
 
 ---
 

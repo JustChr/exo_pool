@@ -15,7 +15,7 @@ from homeassistant.core import HomeAssistant  # noqa: E402
 from homeassistant.data_entry_flow import FlowResultType  # noqa: E402
 from pytest_homeassistant_custom_component.common import MockConfigEntry  # noqa: E402
 
-from custom_components.exo_pool.const import (  # noqa: E402
+from custom_components.zodiac_exo.const import (  # noqa: E402
     DATA_URL_TEMPLATE,
     DEVICES_URL,
     DOMAIN,
@@ -79,14 +79,14 @@ def auto_enable_custom_integrations(enable_custom_integrations):
 @pytest.fixture(autouse=True)
 def no_mqtt():
     """Never open a real MQTT connection."""
-    with patch("custom_components.exo_pool.api._connect_mqtt", return_value=False):
+    with patch("custom_components.zodiac_exo.api._connect_mqtt", return_value=False):
         yield
 
 
 def _entry(**data) -> MockConfigEntry:
     return MockConfigEntry(
         domain=DOMAIN,
-        title=f"Exo Pool ({SERIAL})",
+        title=f"Zodiac Exo ({SERIAL})",
         unique_id=SERIAL,
         data={
             "email": "user@example.com",
@@ -213,7 +213,7 @@ async def test_config_flow_creates_entry_and_blocks_duplicates(
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "select_system"
 
-    with patch("custom_components.exo_pool.async_setup_entry", return_value=True):
+    with patch("custom_components.zodiac_exo.async_setup_entry", return_value=True):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], {"system": f"{SERIAL} (Pool)"}
         )
@@ -254,7 +254,7 @@ async def test_reauth_flow_updates_password(hass: HomeAssistant, aioclient_mock)
 
     result = await entry.start_reauth_flow(hass)
     assert result["step_id"] == "reauth_confirm"
-    with patch("custom_components.exo_pool.async_setup_entry", return_value=True):
+    with patch("custom_components.zodiac_exo.async_setup_entry", return_value=True):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], {"email": "user@example.com", "password": "new-secret"}
         )
@@ -262,3 +262,81 @@ async def test_reauth_flow_updates_password(hass: HomeAssistant, aioclient_mock)
     assert result["reason"] == "reauth_successful"
     assert entry.data["password"] == "new-secret"
     assert "id_token" not in entry.data
+
+
+async def test_takeover_of_old_exo_pool_entry(
+    hass: HomeAssistant, aioclient_mock
+) -> None:
+    """A leftover v0.2.x (exo_pool) entry is adopted with its registry entries."""
+    from homeassistant.helpers import device_registry as dr
+    from homeassistant.helpers import entity_registry as er
+
+    aioclient_mock.get(
+        DATA_URL_TEMPLATE.format(SERIAL),
+        json={"state": {"reported": copy.deepcopy(REPORTED)}},
+    )
+    old = MockConfigEntry(
+        domain="exo_pool",
+        title=f"Exo Pool ({SERIAL})",
+        unique_id=SERIAL,
+        data=dict(_entry().data),
+        options={"refresh_interval": 900},
+    )
+    old.add_to_hass(hass)
+    dev_reg, ent_reg = dr.async_get(hass), er.async_get(hass)
+    device = dev_reg.async_get_or_create(
+        config_entry_id=old.entry_id,
+        identifiers={("exo_pool", old.entry_id)},
+        name="Exo Pool",
+    )
+    ph = ent_reg.async_get_or_create(
+        "sensor",
+        "exo_pool",
+        f"{old.entry_id}_ph",
+        config_entry=old,
+        device_id=device.id,
+        suggested_object_id="exo_pool_ph",
+    )
+    ent_reg.async_update_entity(ph.entity_id, name="Pool pH")
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "migrate"
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    await hass.async_block_till_done()
+
+    new = result["result"]
+    assert new.state is ConfigEntryState.LOADED
+    assert new.options == {"refresh_interval": 900}
+    assert "migrate_from_entry_id" not in new.data
+    assert not hass.config_entries.async_entries("exo_pool")
+
+    moved = ent_reg.async_get("sensor.exo_pool_ph")
+    assert moved.platform == DOMAIN
+    assert moved.config_entry_id == new.entry_id
+    assert moved.unique_id == f"{new.entry_id}_ph"
+    assert moved.name == "Pool pH"
+    assert moved.device_id == device.id
+    assert ent_reg.async_get("sensor.exo_pool_ph_2") is None
+    assert hass.states.get("sensor.exo_pool_ph").state == "7.3"
+    assert dev_reg.async_get(device.id).identifiers == {(DOMAIN, new.entry_id)}
+
+
+async def test_takeover_refused_while_old_integration_installed(
+    hass: HomeAssistant,
+) -> None:
+    MockConfigEntry(
+        domain="exo_pool", unique_id=SERIAL, data=dict(_entry().data)
+    ).add_to_hass(hass)
+    with patch(
+        "custom_components.zodiac_exo.config_flow.async_legacy_installed",
+        return_value=True,
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "legacy_still_installed"

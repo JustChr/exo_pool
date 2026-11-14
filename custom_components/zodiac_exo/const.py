@@ -5,7 +5,7 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.device_registry import DeviceInfo
 
-DOMAIN = "exo_pool"
+DOMAIN = "zodiac_exo"
 
 PLATFORMS = ["sensor", "binary_sensor", "switch", "number", "button", "climate"]
 
@@ -59,7 +59,7 @@ def redact(data: Any) -> Any:
 
 
 def device_info(entry: ConfigEntry) -> DeviceInfo:
-    """Return the shared device info for all Exo Pool entities."""
+    """Return the shared device info for all Zodiac Exo entities."""
     return DeviceInfo(
         identifiers={(DOMAIN, entry.entry_id)},
         name="Exo Pool",

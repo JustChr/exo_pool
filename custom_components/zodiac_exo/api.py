@@ -285,7 +285,7 @@ def _merge_dict(base: dict, update: dict) -> dict:
 
 
 async def async_update_data(hass: HomeAssistant, entry: ConfigEntry):
-    """Fetch data from the Exo Pool API, handling token refresh."""
+    """Fetch data from the Zodiac Exo API, handling token refresh."""
     store = _get_entry_store(hass, entry)
     no_read_until = store.get("no_read_until")
     if no_read_until and time.monotonic() < no_read_until:
@@ -361,7 +361,7 @@ async def async_update_data(hass: HomeAssistant, entry: ConfigEntry):
     try:
         return await _async_fetch_shadow(hass, entry, store, session, serial_number, headers)
     except aiohttp.ClientError as err:
-        raise UpdateFailed(f"Error communicating with Exo Pool API: {err}") from err
+        raise UpdateFailed(f"Error communicating with Zodiac Exo API: {err}") from err
 
 
 async def _async_fetch_shadow(
@@ -636,7 +636,7 @@ def _connect_mqtt(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.warning("MQTT reconnect failed - refreshing credentials")
         hass.async_create_background_task(
             _async_refresh_and_reconnect(hass, entry),
-            name="exo_pool_reconnect_refresh",
+            name="zodiac_exo_reconnect_refresh",
         )
 
     mqtt_client.set_reconnect_failed_callback(_on_reconnect_failed)
@@ -697,7 +697,7 @@ def _schedule_credential_refresh(hass: HomeAssistant, entry: ConfigEntry) -> Non
 
     store["credential_refresh_task"] = hass.async_create_background_task(
         _proactive_refresh(),
-        name="exo_pool_credential_refresh",
+        name="zodiac_exo_credential_refresh",
     )
 
 
