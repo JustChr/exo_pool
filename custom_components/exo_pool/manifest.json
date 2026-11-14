@@ -1,8 +1,10 @@
 {
   "domain": "exo_pool",
   "name": "Exo Pool",
+  "categories": ["water.pools_spas"],
   "codeowners": ["@JustChr"],
   "config_flow": true,
+  "connectivity": ["cloud"],
   "documentation": "https://github.com/JustChr/exo_pool",
   "integration_type": "hub",
   "iot_class": "cloud_push",
